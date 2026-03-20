@@ -7,6 +7,7 @@ actions:
     wait-for-attestation,
     get-supported-chains,
     get-domain-info,
+    register-entity-secret,
     create-wallet-set,
     create-wallet,
     get-wallet,
@@ -220,9 +221,38 @@ Get CCTP domain info for a specific chain.
     echo "Attestation ready: ${ATTESTATION:0:20}..."
 ```
 
+## Setup commands
+
+### register-entity-secret
+
+One-time setup. Registers your entity secret with Circle so wallet
+creation and transaction signing work. Returns a recovery file —
+save it securely.
+
+Requires `api-key` and `entity-secret` inputs.
+
+```yaml
+- name: Register entity secret
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: register-entity-secret
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+```
+
+**Output (`result`):**
+
+```json
+{
+  "recoveryFile": "AAABnQoDxlF2b4Qa7r4BMIy0abzu..."
+}
+```
+
 ## Wallet commands
 
 These commands require a Circle Platform API key (`api-key` input).
+Write operations (create-wallet-set, create-wallet) also require
+`entity-secret`.
 
 ### create-wallet-set
 
@@ -231,6 +261,18 @@ Create a wallet set to group related wallets.
 | Input  | Required | Description     |
 | ------ | -------- | --------------- |
 | `name` | yes      | Wallet set name |
+
+**Output (`result`):**
+
+```json
+{
+  "id": "1637410c-386a-5daf-8a23-88e0d718e233",
+  "custodyType": "DEVELOPER",
+  "name": "my-app-wallets",
+  "createDate": "2026-03-20T06:52:07Z",
+  "updateDate": "2026-03-20T06:52:07Z"
+}
+```
 
 ### create-wallet
 
@@ -242,6 +284,23 @@ Create developer-controlled wallets in a wallet set.
 | `blockchains`   | yes      | Comma-separated blockchain IDs (e.g. "ETH-SEPOLIA") |
 | `count`         | no       | Number of wallets (default: 1)                      |
 
+**Output (`result`):**
+
+```json
+[
+  {
+    "id": "901a01c4-ea06-5de5-82a8-e523106d28c3",
+    "state": "LIVE",
+    "walletSetId": "1637410c-386a-5daf-8a23-88e0d718e233",
+    "custodyType": "DEVELOPER",
+    "address": "0xece130de4029a227f426c184573816620cc4b1dc",
+    "blockchain": "ETH-SEPOLIA",
+    "accountType": "EOA",
+    "createDate": "2026-03-20T06:52:07Z"
+  }
+]
+```
+
 ### get-wallet
 
 Get wallet details by ID.
@@ -249,6 +308,19 @@ Get wallet details by ID.
 | Input       | Required | Description |
 | ----------- | -------- | ----------- |
 | `wallet-id` | yes      | Wallet UUID |
+
+**Output (`result`):**
+
+```json
+{
+  "id": "901a01c4-ea06-5de5-82a8-e523106d28c3",
+  "state": "LIVE",
+  "address": "0xece130de4029a227f426c184573816620cc4b1dc",
+  "blockchain": "ETH-SEPOLIA",
+  "accountType": "EOA",
+  "walletSetId": "1637410c-386a-5daf-8a23-88e0d718e233"
+}
+```
 
 ### list-wallets
 
@@ -260,6 +332,8 @@ List wallets with optional filters.
 | `blockchain`    | no       | Filter by blockchain  |
 | `page-size`     | no       | Results per page (10) |
 
+**Output (`result`):** Array of wallet objects (same shape as get-wallet).
+
 ### get-balance
 
 Get token balances for a wallet.
@@ -268,11 +342,25 @@ Get token balances for a wallet.
 | ----------- | -------- | ----------- |
 | `wallet-id` | yes      | Wallet UUID |
 
+**Output (`result`):**
+
+```json
+[
+  {
+    "token": { "id": "tok-uuid", "name": "USD Coin", "symbol": "USDC" },
+    "amount": "10.00"
+  }
+]
+```
+
+Returns an empty array if the wallet has no tokens.
+
 ## Transaction commands
 
 ### transfer
 
-Transfer tokens from a developer-controlled wallet.
+Transfer tokens from a developer-controlled wallet. Requires
+`entity-secret` for transaction signing.
 
 | Input                 | Required | Description           |
 | --------------------- | -------- | --------------------- |
@@ -282,6 +370,22 @@ Transfer tokens from a developer-controlled wallet.
 | `token-id`            | no       | Circle token UUID     |
 | `blockchain`          | no       | Blockchain identifier |
 
+**Output (`result`):**
+
+```json
+{
+  "id": "tx-uuid",
+  "state": "INITIATED",
+  "walletId": "w-uuid",
+  "destinationAddress": "0xdef...",
+  "amounts": ["1.50"],
+  "transactionType": "OUTBOUND"
+}
+```
+
+Transaction states: `INITIATED` -> `QUEUED` -> `SENT` -> `CONFIRMED`
+(or `FAILED`/`CANCELLED`).
+
 ### get-transaction
 
 Get transaction details and status.
@@ -289,6 +393,19 @@ Get transaction details and status.
 | Input            | Required | Description      |
 | ---------------- | -------- | ---------------- |
 | `transaction-id` | yes      | Transaction UUID |
+
+**Output (`result`):**
+
+```json
+{
+  "id": "tx-uuid",
+  "state": "CONFIRMED",
+  "transactionType": "OUTBOUND",
+  "amounts": ["1.50"],
+  "txHash": "0xabc...",
+  "blockchain": "ETH-SEPOLIA"
+}
+```
 
 ### estimate-fee
 
@@ -301,15 +418,40 @@ Estimate gas fee before executing a transfer.
 | `token-id`            | yes      | Circle token UUID  |
 | `amount`              | yes      | Transfer amount    |
 
+**Output (`result`):**
+
+```json
+{
+  "low": { "gasLimit": "21000", "maxFee": "0.000021" },
+  "medium": { "gasLimit": "21000", "maxFee": "0.000042" },
+  "high": { "gasLimit": "21000", "maxFee": "0.000063" }
+}
+```
+
 ## Compliance commands
 
 ### screen-address
 
 Screen a blockchain address for KYC/AML compliance.
 
-| Input     | Required | Description                  |
-| --------- | -------- | ---------------------------- |
-| `address` | yes      | Blockchain address to screen |
+| Input        | Required | Description                                  |
+| ------------ | -------- | -------------------------------------------- |
+| `address`    | yes      | Blockchain address to screen                 |
+| `blockchain` | no       | Blockchain identifier (default: ETH-SEPOLIA) |
+
+**Output (`result`):**
+
+```json
+{
+  "result": "APPROVED",
+  "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "chain": "ETH-SEPOLIA",
+  "decision": { "screeningDate": "2026-03-20T05:48:56Z" },
+  "details": []
+}
+```
+
+Possible results: `APPROVED`, `DENIED`.
 
 ## Wallet workflow example
 
@@ -373,6 +515,35 @@ The key format is `ENV:ID:SECRET` (e.g. `TEST_API_KEY:abc123:def456`).
 with:
   api-key: ${{ secrets.CIRCLE_API_KEY }}
 ```
+
+## Security
+
+**Address inputs.** The `address`, `destination-address`, and `wallet-id`
+inputs are passed as structured JSON to Circle's API — not interpolated
+into query strings or contract calls. Circle validates all addresses
+server-side. However, if your workflow constructs addresses from user
+input (e.g. `workflow_dispatch`), validate the format before passing
+them to the action:
+
+```yaml
+- name: Validate address
+  run: |
+    if ! [[ "${{ github.event.inputs.address }}" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+      echo "Invalid Ethereum address" && exit 1
+    fi
+
+- name: Screen address
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: screen-address
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    address: ${{ github.event.inputs.address }}
+    blockchain: ETH-SEPOLIA
+```
+
+**Entity secret.** The `entity-secret` input is a 32-byte hex string
+that controls wallet operations. Treat it like a private key — store
+it as a GitHub secret, never log it, and rotate it if compromised.
 
 ## Error handling
 
