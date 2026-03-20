@@ -230,4 +230,142 @@ describe('CircleClient', () => {
       }
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Platform API
+  // ---------------------------------------------------------------------------
+
+  describe('Platform API auth', () => {
+    test('requireApiKey throws without key', () => {
+      const client = new CircleClient()
+      expect(() => client.requireApiKey()).toThrow('api-key is required')
+    })
+
+    test('requireApiKey passes with key', () => {
+      const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+      expect(() => client.requireApiKey()).not.toThrow()
+    })
+  })
+
+  describe('createWalletSet', () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    test('calls correct endpoint with Bearer auth', async () => {
+      mockOk({ data: { walletSet: { id: 'ws-1', name: 'test' } } })
+
+      const result = await client.createWalletSet({ name: 'test' })
+
+      expect(result.id).toBe('ws-1')
+      const [url, opts] = mockFetch.mock.calls[0]
+      expect(url).toBe('https://api.circle.com/v1/w3s/developer/walletSets')
+      expect(opts.headers.Authorization).toBe('Bearer TEST:id:secret')
+      expect(JSON.parse(opts.body).name).toBe('test')
+    })
+
+    test('throws without name', async () => {
+      await expect(client.createWalletSet({})).rejects.toThrow('name is required')
+    })
+  })
+
+  describe('createWallet', () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    test('sends blockchains and count', async () => {
+      mockOk({ data: { wallets: [{ id: 'w-1' }] } })
+
+      await client.createWallet({
+        walletSetId: 'ws-1',
+        blockchains: ['ETH-SEPOLIA'],
+        count: 2,
+      })
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.walletSetId).toBe('ws-1')
+      expect(body.blockchains).toEqual(['ETH-SEPOLIA'])
+      expect(body.count).toBe(2)
+    })
+
+    test('throws without walletSetId', async () => {
+      await expect(client.createWallet({ blockchains: ['ETH'] })).rejects.toThrow(
+        'wallet-set-id is required',
+      )
+    })
+
+    test('throws without blockchains', async () => {
+      await expect(client.createWallet({ walletSetId: 'ws-1' })).rejects.toThrow(
+        'blockchains is required',
+      )
+    })
+  })
+
+  describe('transfer', () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    test('sends transfer request', async () => {
+      mockOk({ data: { id: 'tx-1', state: 'INITIATED' } })
+
+      const result = await client.transfer({
+        walletId: 'w-1',
+        destinationAddress: '0xdef',
+        amount: '5.00',
+        tokenId: 'tok-1',
+      })
+
+      expect(result.id).toBe('tx-1')
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.walletId).toBe('w-1')
+      expect(body.amounts).toEqual(['5.00'])
+    })
+
+    test('throws without required fields', async () => {
+      await expect(client.transfer({ walletId: 'w-1', amount: '1' })).rejects.toThrow(
+        'destination-address is required',
+      )
+    })
+  })
+
+  describe('screenAddress', () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    test('calls compliance endpoint', async () => {
+      mockOk({ data: { result: 'PASS', riskScore: 0 } })
+
+      const result = await client.screenAddress('0xabc')
+
+      expect(result.result).toBe('PASS')
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toContain('/v1/w3s/compliance/screening/addresses')
+    })
+
+    test('throws without address', async () => {
+      await expect(client.screenAddress('')).rejects.toThrow('address is required')
+    })
+  })
+
+  describe('platformRequest error handling', () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    test('parses error message from response', async () => {
+      mockError(401, JSON.stringify({ code: 401, message: 'Invalid credentials' }))
+
+      try {
+        await client.listWallets()
+      } catch (e) {
+        expect(e).toBeInstanceOf(CircleError)
+        expect(e.message).toBe('Invalid credentials')
+        expect(e.code).toBe('401')
+      }
+    })
+
+    test('handles non-JSON error body', async () => {
+      mockError(500, 'Internal Server Error')
+
+      try {
+        await client.listWallets()
+      } catch (e) {
+        expect(e).toBeInstanceOf(CircleError)
+        expect(e.code).toBe('API_ERROR')
+      }
+    })
+  })
 })

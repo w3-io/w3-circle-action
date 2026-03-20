@@ -1,15 +1,22 @@
 name: 'W3 Circle Action'
-description: 'Cross-chain USDC transfers via Circle CCTP — attestation, domain lookup, and transfer status'
+description: 'Circle CCTP, programmable wallets, transfers, compliance, and fee estimation'
 author: 'w3-io'
 
 inputs:
   command:
-    description: 'Operation: get-attestation, wait-for-attestation, get-supported-chains, get-domain-info'
+    description: >
+      Operation to perform. CCTP: get-attestation, wait-for-attestation,
+      get-supported-chains, get-domain-info. Wallets: create-wallet-set,
+      create-wallet, get-wallet, list-wallets, get-balance. Transactions:
+      transfer, get-transaction, estimate-fee. Compliance: screen-address.
     required: true
 
-  # Authentication (not required for CCTP/IRIS commands)
+  # Authentication
   api-key:
-    description: 'Circle Platform API key (required for wallet/compliance commands, not for CCTP)'
+    description: 'Circle Platform API key (required for wallet/transaction/compliance commands, not for CCTP)'
+    required: false
+  api-url:
+    description: 'Circle Platform API base URL override'
     required: false
 
   # IRIS API config
@@ -30,6 +37,50 @@ inputs:
     required: false
   network:
     description: 'Filter chains by network: "mainnet" or "testnet"'
+    required: false
+
+  # Wallet inputs
+  wallet-id:
+    description: 'Wallet UUID'
+    required: false
+  wallet-set-id:
+    description: 'Wallet set UUID'
+    required: false
+  name:
+    description: 'Name for wallet set creation'
+    required: false
+  blockchains:
+    description: 'Comma-separated blockchain identifiers (e.g. "ETH-SEPOLIA,AVAX-FUJI")'
+    required: false
+  count:
+    description: 'Number of wallets to create (default: 1)'
+    required: false
+    default: '1'
+  blockchain:
+    description: 'Single blockchain filter (e.g. "ETH-SEPOLIA")'
+    required: false
+  page-size:
+    description: 'Results per page for list operations (default: 10)'
+    required: false
+    default: '10'
+
+  # Transaction inputs
+  destination-address:
+    description: 'Recipient blockchain address'
+    required: false
+  token-id:
+    description: 'Circle token UUID'
+    required: false
+  amount:
+    description: 'Transfer amount as string (e.g. "1.50")'
+    required: false
+  transaction-id:
+    description: 'Transaction UUID'
+    required: false
+
+  # Compliance inputs
+  address:
+    description: 'Blockchain address to screen for compliance'
     required: false
 
   # Polling config (for wait-for-attestation)

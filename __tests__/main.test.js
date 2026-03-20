@@ -227,4 +227,200 @@ describe('run', () => {
     expect(url).toContain('iris-api-sandbox.circle.com')
     expect(mockCore.getErrors()).toHaveLength(0)
   })
+
+  // -- Platform API: Wallets --------------------------------------------------
+
+  test('create-wallet-set calls platform API', async () => {
+    mockCore.setInputs({
+      command: 'create-wallet-set',
+      'api-key': 'TEST:id:secret',
+      name: 'test-set',
+    })
+    mockOk({ data: { walletSet: { id: 'ws-123', name: 'test-set' } } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.id).toBe('ws-123')
+    expect(mockCore.getErrors()).toHaveLength(0)
+
+    const [url, opts] = mockFetch.mock.calls[0]
+    expect(url).toContain('/v1/w3s/developer/walletSets')
+    expect(opts.headers.Authorization).toBe('Bearer TEST:id:secret')
+  })
+
+  test('create-wallet calls platform API with blockchains', async () => {
+    mockCore.setInputs({
+      command: 'create-wallet',
+      'api-key': 'TEST:id:secret',
+      'wallet-set-id': 'ws-123',
+      blockchains: 'ETH-SEPOLIA, AVAX-FUJI',
+    })
+    mockOk({
+      data: {
+        wallets: [{ id: 'w-1', address: '0xabc', blockchain: 'ETH-SEPOLIA' }],
+      },
+    })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result).toHaveLength(1)
+    expect(result[0].blockchain).toBe('ETH-SEPOLIA')
+    expect(mockCore.getErrors()).toHaveLength(0)
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.blockchains).toEqual(['ETH-SEPOLIA', 'AVAX-FUJI'])
+  })
+
+  test('get-wallet returns wallet details', async () => {
+    mockCore.setInputs({
+      command: 'get-wallet',
+      'api-key': 'TEST:id:secret',
+      'wallet-id': 'w-123',
+    })
+    mockOk({ data: { wallet: { id: 'w-123', address: '0xabc', state: 'LIVE' } } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.id).toBe('w-123')
+    expect(result.state).toBe('LIVE')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  test('list-wallets returns array', async () => {
+    mockCore.setInputs({
+      command: 'list-wallets',
+      'api-key': 'TEST:id:secret',
+    })
+    mockOk({ data: { wallets: [{ id: 'w-1' }, { id: 'w-2' }] } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result).toHaveLength(2)
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  test('get-balance returns token balances', async () => {
+    mockCore.setInputs({
+      command: 'get-balance',
+      'api-key': 'TEST:id:secret',
+      'wallet-id': 'w-123',
+    })
+    mockOk({
+      data: {
+        tokenBalances: [{ token: { symbol: 'USDC' }, amount: '10.00' }],
+      },
+    })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result[0].token.symbol).toBe('USDC')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  // -- Platform API: Transactions ---------------------------------------------
+
+  test('transfer calls platform API', async () => {
+    mockCore.setInputs({
+      command: 'transfer',
+      'api-key': 'TEST:id:secret',
+      'wallet-id': 'w-123',
+      'destination-address': '0xdef',
+      amount: '5.00',
+    })
+    mockOk({ data: { id: 'tx-1', state: 'INITIATED' } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.id).toBe('tx-1')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  test('get-transaction returns status', async () => {
+    mockCore.setInputs({
+      command: 'get-transaction',
+      'api-key': 'TEST:id:secret',
+      'transaction-id': 'tx-123',
+    })
+    mockOk({ data: { transaction: { id: 'tx-123', state: 'CONFIRMED' } } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.state).toBe('CONFIRMED')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  test('estimate-fee returns fee tiers', async () => {
+    mockCore.setInputs({
+      command: 'estimate-fee',
+      'api-key': 'TEST:id:secret',
+      'wallet-id': 'w-123',
+      'destination-address': '0xdef',
+      'token-id': 'tok-1',
+      amount: '1.00',
+    })
+    mockOk({ data: { low: '0.001', medium: '0.002', high: '0.003' } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.medium).toBe('0.002')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  // -- Platform API: Compliance -----------------------------------------------
+
+  test('screen-address calls compliance API', async () => {
+    mockCore.setInputs({
+      command: 'screen-address',
+      'api-key': 'TEST:id:secret',
+      address: '0xabc123',
+    })
+    mockOk({ data: { result: 'PASS', riskScore: 0 } })
+
+    await run()
+
+    const result = JSON.parse(mockCore.getOutputs().result)
+    expect(result.result).toBe('PASS')
+    expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  // -- Platform API: Auth errors ----------------------------------------------
+
+  test('platform command without api-key fails', async () => {
+    mockCore.setInputs({
+      command: 'create-wallet-set',
+      name: 'test',
+    })
+
+    await run()
+
+    const errors = mockCore.getErrors()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toContain('MISSING_API_KEY')
+  })
+
+  test('platform API 401 reports auth error', async () => {
+    mockCore.setInputs({
+      command: 'list-wallets',
+      'api-key': 'bad-key',
+    })
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ code: 401, message: 'Invalid credentials' }),
+    })
+
+    await run()
+
+    const errors = mockCore.getErrors()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toContain('Invalid credentials')
+  })
 })

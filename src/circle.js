@@ -1,5 +1,5 @@
 /**
- * Circle CCTP API client.
+ * Circle API client.
  *
  * Two API surfaces:
  *
@@ -8,14 +8,13 @@
  *     - Attestation lookups by message hash
  *     - Used for cross-chain USDC transfers
  *
- *   Circle Platform API (wallets, compliance, paymaster):
+ *   Circle Platform API (wallets, compliance, transactions):
  *     - Requires Bearer token (api-key)
+ *     - Key format: ENV:ID:SECRET (e.g. TEST_API_KEY:abc123:def456)
  *     - Developer console: https://console.circle.com
- *
- * Phase 1 implements the IRIS API only. Platform API commands will be
- * added in a later phase.
  */
 
+const DEFAULT_API_URL = 'https://api.circle.com'
 const DEFAULT_IRIS_URL = 'https://iris-api.circle.com'
 const DEFAULT_IRIS_SANDBOX_URL = 'https://iris-api-sandbox.circle.com'
 
@@ -78,6 +77,7 @@ export class CircleError extends Error {
 export class CircleClient {
   constructor({
     apiKey,
+    apiUrl,
     irisUrl,
     sandbox = false,
     maxRetries = 3,
@@ -85,6 +85,7 @@ export class CircleClient {
     timeout = 30,
   } = {}) {
     this.apiKey = apiKey || null
+    this.apiUrl = apiUrl ? apiUrl.replace(/\/+$/, '') : DEFAULT_API_URL
     this.irisUrl = irisUrl
       ? irisUrl.replace(/\/+$/, '')
       : sandbox
@@ -211,6 +212,261 @@ export class CircleClient {
       `Attestation not ready after ${maxAttempts} attempts (${maxAttempts * pollInterval}s)`,
       { code: 'ATTESTATION_TIMEOUT' },
     )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Platform API: Wallets
+  // ---------------------------------------------------------------------------
+
+  requireApiKey() {
+    if (!this.apiKey) {
+      throw new CircleError('api-key is required for Platform API commands', {
+        code: 'MISSING_API_KEY',
+      })
+    }
+  }
+
+  /**
+   * Create a wallet set to group related wallets.
+   *
+   * @param {object} options
+   * @param {string} options.name - Wallet set name
+   * @returns {object} Created wallet set
+   */
+  async createWalletSet({ name }) {
+    this.requireApiKey()
+    if (!name) throw new CircleError('name is required', { code: 'MISSING_NAME' })
+
+    const data = await this.platformRequest('POST', '/v1/w3s/developer/walletSets', {
+      idempotencyKey: crypto.randomUUID(),
+      name,
+    })
+    return data.data?.walletSet || data
+  }
+
+  /**
+   * Create a developer-controlled wallet.
+   *
+   * @param {object} options
+   * @param {string} options.walletSetId - ID of the wallet set
+   * @param {string[]} options.blockchains - Blockchains to enable (e.g. ["ETH-SEPOLIA"])
+   * @param {number} [options.count=1] - Number of wallets to create
+   * @returns {object} Created wallet(s)
+   */
+  async createWallet({ walletSetId, blockchains, count = 1 }) {
+    this.requireApiKey()
+    if (!walletSetId)
+      throw new CircleError('wallet-set-id is required', { code: 'MISSING_WALLET_SET_ID' })
+    if (!blockchains?.length)
+      throw new CircleError('blockchains is required', { code: 'MISSING_BLOCKCHAINS' })
+
+    const data = await this.platformRequest('POST', '/v1/w3s/developer/wallets', {
+      idempotencyKey: crypto.randomUUID(),
+      walletSetId,
+      blockchains,
+      count,
+    })
+    return data.data?.wallets || data
+  }
+
+  /**
+   * Get wallet details by ID.
+   *
+   * @param {string} walletId - Wallet UUID
+   * @returns {object} Wallet details
+   */
+  async getWallet(walletId) {
+    this.requireApiKey()
+    if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
+
+    const data = await this.platformRequest('GET', `/v1/w3s/wallets/${walletId}`)
+    return data.data?.wallet || data
+  }
+
+  /**
+   * List wallets with optional filters.
+   *
+   * @param {object} [options]
+   * @param {string} [options.walletSetId] - Filter by wallet set
+   * @param {string} [options.blockchain] - Filter by blockchain
+   * @param {number} [options.pageSize=10] - Results per page
+   * @returns {object} Wallet list
+   */
+  async listWallets({ walletSetId, blockchain, pageSize = 10 } = {}) {
+    this.requireApiKey()
+
+    const params = new URLSearchParams()
+    if (walletSetId) params.set('walletSetId', walletSetId)
+    if (blockchain) params.set('blockchain', blockchain)
+    params.set('pageSize', String(pageSize))
+
+    const qs = params.toString()
+    const data = await this.platformRequest('GET', `/v1/w3s/wallets?${qs}`)
+    return data.data?.wallets || data
+  }
+
+  /**
+   * Get token balances for a wallet.
+   *
+   * @param {string} walletId - Wallet UUID
+   * @returns {object} Token balances
+   */
+  async getBalance(walletId) {
+    this.requireApiKey()
+    if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
+
+    const data = await this.platformRequest('GET', `/v1/w3s/wallets/${walletId}/balances`)
+    return data.data?.tokenBalances || data
+  }
+
+  // ---------------------------------------------------------------------------
+  // Platform API: Transactions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Transfer tokens between wallets or to an external address.
+   *
+   * @param {object} options
+   * @param {string} options.walletId - Source wallet ID
+   * @param {string} options.destinationAddress - Recipient address
+   * @param {string} options.tokenId - Token UUID (from Circle token registry)
+   * @param {string} options.amount - Amount as string (e.g. "1.50")
+   * @param {string} [options.blockchain] - Blockchain (e.g. "ETH-SEPOLIA")
+   * @returns {object} Transaction details
+   */
+  async transfer({ walletId, destinationAddress, tokenId, amount, blockchain }) {
+    this.requireApiKey()
+    if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
+    if (!destinationAddress)
+      throw new CircleError('destination-address is required', { code: 'MISSING_DESTINATION' })
+    if (!amount) throw new CircleError('amount is required', { code: 'MISSING_AMOUNT' })
+
+    const body = {
+      idempotencyKey: crypto.randomUUID(),
+      walletId,
+      destinationAddress,
+      amounts: [amount],
+      feeLevel: 'MEDIUM',
+    }
+
+    if (tokenId) body.tokenId = tokenId
+    if (blockchain) body.blockchain = blockchain
+
+    const data = await this.platformRequest('POST', '/v1/w3s/developer/transactions/transfer', body)
+    return data.data || data
+  }
+
+  /**
+   * Get transaction status by ID.
+   *
+   * @param {string} transactionId - Transaction UUID
+   * @returns {object} Transaction details with status
+   */
+  async getTransaction(transactionId) {
+    this.requireApiKey()
+    if (!transactionId)
+      throw new CircleError('transaction-id is required', { code: 'MISSING_TRANSACTION_ID' })
+
+    const data = await this.platformRequest('GET', `/v1/w3s/transactions/${transactionId}`)
+    return data.data?.transaction || data
+  }
+
+  /**
+   * Estimate transfer fee before executing.
+   *
+   * @param {object} options
+   * @param {string} options.walletId - Source wallet ID
+   * @param {string} options.destinationAddress - Recipient address
+   * @param {string} options.tokenId - Token UUID
+   * @param {string} options.amount - Transfer amount
+   * @returns {object} Fee estimate with low/medium/high tiers
+   */
+  async estimateFee({ walletId, destinationAddress, tokenId, amount }) {
+    this.requireApiKey()
+    if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
+
+    const data = await this.platformRequest('POST', '/v1/w3s/transactions/transfer/estimateFee', {
+      walletId,
+      destinationAddress,
+      tokenId,
+      amounts: [amount],
+    })
+    return data.data || data
+  }
+
+  // ---------------------------------------------------------------------------
+  // Platform API: Compliance
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Screen an address for compliance (KYC/AML).
+   *
+   * @param {string} address - Blockchain address to screen
+   * @returns {object} Screening result with risk indicators
+   */
+  async screenAddress(address) {
+    this.requireApiKey()
+    if (!address) throw new CircleError('address is required', { code: 'MISSING_ADDRESS' })
+
+    const data = await this.platformRequest('POST', '/v1/w3s/compliance/screening/addresses', {
+      address,
+    })
+    return data.data || data
+  }
+
+  // ---------------------------------------------------------------------------
+  // Platform API HTTP
+  // ---------------------------------------------------------------------------
+
+  async platformRequest(method, path, body) {
+    const url = `${this.apiUrl}${path}`
+    const headers = {
+      Authorization: `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    }
+
+    const options = {
+      method,
+      headers,
+      signal: AbortSignal.timeout(this.timeout),
+    }
+
+    if (body && method !== 'GET') {
+      options.body = JSON.stringify(body)
+    }
+
+    const response = await fetch(url, options)
+    const text = await response.text()
+
+    if (!response.ok) {
+      let errorMessage = `Circle API error: ${response.status}`
+      let errorCode = 'API_ERROR'
+      try {
+        const err = JSON.parse(text)
+        if (err.message) errorMessage = err.message
+        if (err.code) errorCode = String(err.code)
+      } catch {
+        // use default message
+      }
+      throw new CircleError(errorMessage, {
+        status: response.status,
+        body: text,
+        code: errorCode,
+      })
+    }
+
+    if (!text || !text.trim()) return {}
+
+    try {
+      return JSON.parse(text)
+    } catch {
+      throw new CircleError('Invalid JSON from Circle API', {
+        status: response.status,
+        body: text,
+        code: 'PARSE_ERROR',
+      })
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -1,11 +1,26 @@
 ---
-title: Circle CCTP
+title: Circle
 category: integrations
-actions: [get-attestation, wait-for-attestation, get-supported-chains, get-domain-info]
+actions:
+  [
+    get-attestation,
+    wait-for-attestation,
+    get-supported-chains,
+    get-domain-info,
+    create-wallet-set,
+    create-wallet,
+    get-wallet,
+    list-wallets,
+    get-balance,
+    transfer,
+    get-transaction,
+    estimate-fee,
+    screen-address,
+  ]
 complexity: intermediate
 ---
 
-# Circle CCTP
+# Circle
 
 [Circle](https://circle.com) is the issuer of USDC, the leading regulated
 stablecoin with $30B+ in circulation across 19+ blockchains. Their
@@ -205,28 +220,140 @@ Get CCTP domain info for a specific chain.
     echo "Attestation ready: ${ATTESTATION:0:20}..."
 ```
 
+## Wallet commands
+
+These commands require a Circle Platform API key (`api-key` input).
+
+### create-wallet-set
+
+Create a wallet set to group related wallets.
+
+| Input  | Required | Description     |
+| ------ | -------- | --------------- |
+| `name` | yes      | Wallet set name |
+
+### create-wallet
+
+Create developer-controlled wallets in a wallet set.
+
+| Input           | Required | Description                                         |
+| --------------- | -------- | --------------------------------------------------- |
+| `wallet-set-id` | yes      | Wallet set UUID                                     |
+| `blockchains`   | yes      | Comma-separated blockchain IDs (e.g. "ETH-SEPOLIA") |
+| `count`         | no       | Number of wallets (default: 1)                      |
+
+### get-wallet
+
+Get wallet details by ID.
+
+| Input       | Required | Description |
+| ----------- | -------- | ----------- |
+| `wallet-id` | yes      | Wallet UUID |
+
+### list-wallets
+
+List wallets with optional filters.
+
+| Input           | Required | Description           |
+| --------------- | -------- | --------------------- |
+| `wallet-set-id` | no       | Filter by wallet set  |
+| `blockchain`    | no       | Filter by blockchain  |
+| `page-size`     | no       | Results per page (10) |
+
+### get-balance
+
+Get token balances for a wallet.
+
+| Input       | Required | Description |
+| ----------- | -------- | ----------- |
+| `wallet-id` | yes      | Wallet UUID |
+
+## Transaction commands
+
+### transfer
+
+Transfer tokens from a developer-controlled wallet.
+
+| Input                 | Required | Description           |
+| --------------------- | -------- | --------------------- |
+| `wallet-id`           | yes      | Source wallet UUID    |
+| `destination-address` | yes      | Recipient address     |
+| `amount`              | yes      | Amount (e.g. "1.50")  |
+| `token-id`            | no       | Circle token UUID     |
+| `blockchain`          | no       | Blockchain identifier |
+
+### get-transaction
+
+Get transaction details and status.
+
+| Input            | Required | Description      |
+| ---------------- | -------- | ---------------- |
+| `transaction-id` | yes      | Transaction UUID |
+
+### estimate-fee
+
+Estimate gas fee before executing a transfer.
+
+| Input                 | Required | Description        |
+| --------------------- | -------- | ------------------ |
+| `wallet-id`           | yes      | Source wallet UUID |
+| `destination-address` | yes      | Recipient address  |
+| `token-id`            | yes      | Circle token UUID  |
+| `amount`              | yes      | Transfer amount    |
+
+## Compliance commands
+
+### screen-address
+
+Screen a blockchain address for KYC/AML compliance.
+
+| Input     | Required | Description                  |
+| --------- | -------- | ---------------------------- |
+| `address` | yes      | Blockchain address to screen |
+
+## Wallet workflow example
+
+```yaml
+- name: Create wallet set
+  id: ws
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: create-wallet-set
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    name: 'my-app-wallets'
+
+- name: Create wallet
+  id: wallet
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: create-wallet
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    wallet-set-id: ${{ fromJSON(steps.ws.outputs.result).id }}
+    blockchains: 'ETH-SEPOLIA'
+
+- name: Check balance
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: get-balance
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    wallet-id: ${{ fromJSON(steps.wallet.outputs.result)[0].id }}
+```
+
 ## Beyond this W3 integration
 
-This action covers CCTP attestation lookups — the off-chain coordination
-layer. Circle's full cross-chain transfer requires on-chain transactions
-on both source and destination chains:
+This action covers CCTP attestation, programmable wallets, and compliance
+screening. Circle's full cross-chain transfer also requires on-chain
+transactions on both source and destination chains:
 
-| Layer                     | What                                                      | Trust model                 |
-| ------------------------- | --------------------------------------------------------- | --------------------------- |
-| This action (off-chain)   | Attestation polling, domain/chain lookup                  | Public IRIS API (no auth)   |
-| CCTP contracts (on-chain) | Burn USDC (source), mint USDC (destination)               | Smart contract verification |
-| Circle Platform API       | Programmable wallets, compliance screening, gas paymaster | Bearer token auth           |
+| Layer                     | What                                        | Trust model                  |
+| ------------------------- | ------------------------------------------- | ---------------------------- |
+| This action (off-chain)   | Attestation, wallets, transfers, compliance | IRIS (public) + Platform API |
+| CCTP contracts (on-chain) | Burn USDC (source), mint USDC (destination) | Smart contract verification  |
 
 **On-chain contracts:**
 
 - `TokenMessenger.depositForBurn()` — burns USDC on source chain
 - `MessageTransmitter.receiveMessage()` — mints USDC on destination chain
-
-**Platform API (future commands):**
-
-- Programmable wallets for custody and transaction signing
-- Compliance screening (KYC/AML)
-- Gas paymaster for gasless transactions
 
 Contract addresses for testnet chains are included in `get-domain-info`
 output. For mainnet addresses, see [Circle's CCTP docs](https://developers.circle.com/stablecoins/docs/cctp-getting-started).
@@ -235,18 +362,26 @@ Get testnet USDC from [faucet.circle.com](https://faucet.circle.com).
 
 ## Authentication
 
-**CCTP commands (Phase 1) require no authentication.** The IRIS
-attestation API is public.
+**CCTP commands require no authentication.** The IRIS attestation API
+is public.
 
-Future commands (wallets, compliance) will require a Circle Platform API
-key from [console.circle.com](https://console.circle.com).
+**Wallet, transaction, and compliance commands** require a Circle
+Platform API key. Get one from [console.circle.com](https://console.circle.com).
+The key format is `ENV:ID:SECRET` (e.g. `TEST_API_KEY:abc123:def456`).
+
+```yaml
+with:
+  api-key: ${{ secrets.CIRCLE_API_KEY }}
+```
 
 ## Error handling
 
 The action fails with a descriptive message on:
 
-- Missing required inputs (`message-hash`, `chain`)
+- Missing required inputs (`message-hash`, `chain`, `wallet-id`, etc.)
+- Missing API key for Platform API commands
 - Unknown chain name (lists available chains)
 - IRIS API errors (5xx)
+- Platform API errors (401 invalid key, 400 bad request, 5xx)
 - Attestation timeout (`wait-for-attestation` exceeds max-attempts)
 - Invalid JSON response

@@ -2,10 +2,23 @@ import * as core from '@actions/core'
 import { CircleClient, CircleError } from './circle.js'
 
 const COMMANDS = {
+  // CCTP (IRIS API — no auth)
   'get-attestation': runGetAttestation,
   'wait-for-attestation': runWaitForAttestation,
   'get-supported-chains': runGetSupportedChains,
   'get-domain-info': runGetDomainInfo,
+  // Wallets (Platform API — requires api-key)
+  'create-wallet-set': runCreateWalletSet,
+  'create-wallet': runCreateWallet,
+  'get-wallet': runGetWallet,
+  'list-wallets': runListWallets,
+  'get-balance': runGetBalance,
+  // Transactions (Platform API — requires api-key)
+  transfer: runTransfer,
+  'get-transaction': runGetTransaction,
+  'estimate-fee': runEstimateFee,
+  // Compliance (Platform API — requires api-key)
+  'screen-address': runScreenAddress,
 }
 
 export async function run() {
@@ -22,6 +35,7 @@ export async function run() {
 
     const client = new CircleClient({
       apiKey: core.getInput('api-key') || undefined,
+      apiUrl: core.getInput('api-url') || undefined,
       irisUrl: core.getInput('iris-url') || undefined,
       sandbox: core.getInput('sandbox') === 'true',
       maxRetries: core.getInput('max-retries') ? Number(core.getInput('max-retries')) : undefined,
@@ -70,10 +84,76 @@ async function runGetDomainInfo(client) {
   return client.getDomainInfo(chain)
 }
 
+// -- Platform API: Wallets --------------------------------------------------
+
+async function runCreateWalletSet(client) {
+  const name = core.getInput('name', { required: true })
+  return client.createWalletSet({ name })
+}
+
+async function runCreateWallet(client) {
+  const walletSetId = core.getInput('wallet-set-id', { required: true })
+  const blockchains = core
+    .getInput('blockchains', { required: true })
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const count = core.getInput('count') ? Number(core.getInput('count')) : 1
+  return client.createWallet({ walletSetId, blockchains, count })
+}
+
+async function runGetWallet(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  return client.getWallet(walletId)
+}
+
+async function runListWallets(client) {
+  const walletSetId = core.getInput('wallet-set-id') || undefined
+  const blockchain = core.getInput('blockchain') || undefined
+  const pageSize = core.getInput('page-size') ? Number(core.getInput('page-size')) : undefined
+  return client.listWallets({ walletSetId, blockchain, pageSize })
+}
+
+async function runGetBalance(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  return client.getBalance(walletId)
+}
+
+// -- Platform API: Transactions ---------------------------------------------
+
+async function runTransfer(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  const destinationAddress = core.getInput('destination-address', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  const tokenId = core.getInput('token-id') || undefined
+  const blockchain = core.getInput('blockchain') || undefined
+  return client.transfer({ walletId, destinationAddress, tokenId, amount, blockchain })
+}
+
+async function runGetTransaction(client) {
+  const transactionId = core.getInput('transaction-id', { required: true })
+  return client.getTransaction(transactionId)
+}
+
+async function runEstimateFee(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  const destinationAddress = core.getInput('destination-address', { required: true })
+  const tokenId = core.getInput('token-id', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  return client.estimateFee({ walletId, destinationAddress, tokenId, amount })
+}
+
+// -- Platform API: Compliance -----------------------------------------------
+
+async function runScreenAddress(client) {
+  const address = core.getInput('address', { required: true })
+  return client.screenAddress(address)
+}
+
 // -- Job summary ------------------------------------------------------------
 
 function writeSummary(command, result) {
-  const heading = `Circle CCTP: ${command}`
+  const heading = `Circle: ${command}`
 
   if (command === 'get-attestation' || command === 'wait-for-attestation') {
     const status = result.status === 'complete' ? 'Complete' : 'Pending'

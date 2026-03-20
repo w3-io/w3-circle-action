@@ -1,9 +1,11 @@
 kind: integration
 partner: circle
-name: Circle CCTP
+name: Circle
 version: 1.0.0
 repo: w3-io/w3-circle-action
 commands:
+  # -- CCTP (IRIS API, no auth) ------------------------------------------------
+
   - name: get-attestation
     description: >
       Get CCTP attestation status for a cross-chain message. Returns the
@@ -69,3 +71,167 @@ commands:
       result:
         type: object
         description: '{name, domain, chainId, usdc, network, contracts}'
+
+  # -- Wallets (Platform API, requires api-key) --------------------------------
+
+  - name: create-wallet-set
+    description: Create a wallet set to group related developer-controlled wallets.
+    inputs:
+      name:
+        type: string
+        required: true
+        description: Wallet set name
+    outputs:
+      result:
+        type: object
+        description: '{id, name, custodyType, createDate, updateDate}'
+
+  - name: create-wallet
+    description: >
+      Create developer-controlled wallets in a wallet set for one or more
+      blockchains.
+    inputs:
+      wallet-set-id:
+        type: string
+        required: true
+        description: Wallet set UUID
+      blockchains:
+        type: string
+        required: true
+        description: 'Comma-separated blockchain identifiers (e.g. "ETH-SEPOLIA,AVAX-FUJI")'
+      count:
+        type: number
+        required: false
+        description: 'Number of wallets to create (default: 1)'
+    outputs:
+      result:
+        type: array
+        description: '[{id, address, blockchain, walletSetId, ...}]'
+
+  - name: get-wallet
+    description: Get wallet details by ID.
+    inputs:
+      wallet-id:
+        type: string
+        required: true
+        description: Wallet UUID
+    outputs:
+      result:
+        type: object
+        description: '{id, address, blockchain, walletSetId, state, ...}'
+
+  - name: list-wallets
+    description: List wallets with optional filters by wallet set or blockchain.
+    inputs:
+      wallet-set-id:
+        type: string
+        required: false
+        description: Filter by wallet set UUID
+      blockchain:
+        type: string
+        required: false
+        description: Filter by blockchain (e.g. "ETH-SEPOLIA")
+      page-size:
+        type: number
+        required: false
+        description: 'Results per page (default: 10)'
+    outputs:
+      result:
+        type: array
+        description: '[{id, address, blockchain, state, ...}]'
+
+  - name: get-balance
+    description: Get token balances for a wallet.
+    inputs:
+      wallet-id:
+        type: string
+        required: true
+        description: Wallet UUID
+    outputs:
+      result:
+        type: array
+        description: '[{token: {id, name, symbol}, amount, ...}]'
+
+  # -- Transactions (Platform API, requires api-key) ---------------------------
+
+  - name: transfer
+    description: >
+      Transfer tokens from a developer-controlled wallet to a destination
+      address. Supports USDC and other tokens on any supported blockchain.
+    inputs:
+      wallet-id:
+        type: string
+        required: true
+        description: Source wallet UUID
+      destination-address:
+        type: string
+        required: true
+        description: Recipient blockchain address
+      amount:
+        type: string
+        required: true
+        description: 'Transfer amount (e.g. "1.50")'
+      token-id:
+        type: string
+        required: false
+        description: Circle token UUID
+      blockchain:
+        type: string
+        required: false
+        description: Blockchain identifier
+    outputs:
+      result:
+        type: object
+        description: '{id, state, amounts, sourceAddress, destinationAddress, ...}'
+
+  - name: get-transaction
+    description: Get transaction details and status by ID.
+    inputs:
+      transaction-id:
+        type: string
+        required: true
+        description: Transaction UUID
+    outputs:
+      result:
+        type: object
+        description: '{id, state, transactionType, amounts, txHash, ...}'
+
+  - name: estimate-fee
+    description: Estimate gas fee for a token transfer before executing.
+    inputs:
+      wallet-id:
+        type: string
+        required: true
+        description: Source wallet UUID
+      destination-address:
+        type: string
+        required: true
+        description: Recipient blockchain address
+      token-id:
+        type: string
+        required: true
+        description: Circle token UUID
+      amount:
+        type: string
+        required: true
+        description: Transfer amount
+    outputs:
+      result:
+        type: object
+        description: '{low, medium, high}'
+
+  # -- Compliance (Platform API, requires api-key) -----------------------------
+
+  - name: screen-address
+    description: >
+      Screen a blockchain address for compliance (KYC/AML). Returns risk
+      indicators and screening verdict.
+    inputs:
+      address:
+        type: string
+        required: true
+        description: Blockchain address to screen
+    outputs:
+      result:
+        type: object
+        description: '{result, riskScore, ...}'
