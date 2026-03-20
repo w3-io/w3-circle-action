@@ -143,12 +143,12 @@ export class CircleClient {
 
     const normalized = messageHash.startsWith('0x') ? messageHash : `0x${messageHash}`
 
-    const data = await this.irisRequest('GET', `/attestations/${normalized}`)
+    const data = await this.irisRequest('GET', `/attestations/${encodeURIComponent(normalized)}`)
 
     return {
       messageHash: normalized,
-      status: data.status || 'pending_confirmations',
-      attestation: data.attestation || null,
+      status: data.status ?? 'pending_confirmations',
+      attestation: data.attestation ?? null,
     }
   }
 
@@ -538,7 +538,6 @@ export class CircleClient {
     const url = `${this.apiUrl}${path}`
     const headers = {
       Authorization: `Bearer ${this.apiKey}`,
-      'Content-Type': 'application/json',
       Accept: 'application/json',
     }
 
@@ -549,6 +548,7 @@ export class CircleClient {
     }
 
     if (body && method !== 'GET') {
+      headers['Content-Type'] = 'application/json'
       options.body = JSON.stringify(body)
     }
 

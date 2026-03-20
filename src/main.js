@@ -67,12 +67,10 @@ async function runGetAttestation(client) {
 
 async function runWaitForAttestation(client) {
   const messageHash = core.getInput('message-hash', { required: true })
-  const pollInterval = core.getInput('poll-interval')
-    ? Number(core.getInput('poll-interval'))
-    : undefined
-  const maxAttempts = core.getInput('max-attempts')
-    ? Number(core.getInput('max-attempts'))
-    : undefined
+  const pollIntervalInput = core.getInput('poll-interval')
+  const maxAttemptsInput = core.getInput('max-attempts')
+  const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
+  const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
 
@@ -106,7 +104,8 @@ async function runCreateWallet(client) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const count = core.getInput('count') ? Number(core.getInput('count')) : 1
+  const countInput = core.getInput('count')
+  const count = countInput ? Number(countInput) : 1
   return client.createWallet({ walletSetId, blockchains, count })
 }
 
@@ -118,7 +117,8 @@ async function runGetWallet(client) {
 async function runListWallets(client) {
   const walletSetId = core.getInput('wallet-set-id') || undefined
   const blockchain = core.getInput('blockchain') || undefined
-  const pageSize = core.getInput('page-size') ? Number(core.getInput('page-size')) : undefined
+  const pageSizeInput = core.getInput('page-size')
+  const pageSize = pageSizeInput ? Number(pageSizeInput) : undefined
   return client.listWallets({ walletSetId, blockchain, pageSize })
 }
 

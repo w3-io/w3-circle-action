@@ -27401,12 +27401,12 @@ class CircleClient {
 
     const normalized = messageHash.startsWith('0x') ? messageHash : `0x${messageHash}`;
 
-    const data = await this.irisRequest('GET', `/attestations/${normalized}`);
+    const data = await this.irisRequest('GET', `/attestations/${encodeURIComponent(normalized)}`);
 
     return {
       messageHash: normalized,
-      status: data.status || 'pending_confirmations',
-      attestation: data.attestation || null,
+      status: data.status ?? 'pending_confirmations',
+      attestation: data.attestation ?? null,
     }
   }
 
@@ -27796,7 +27796,6 @@ class CircleClient {
     const url = `${this.apiUrl}${path}`;
     const headers = {
       Authorization: `Bearer ${this.apiKey}`,
-      'Content-Type': 'application/json',
       Accept: 'application/json',
     };
 
@@ -27807,6 +27806,7 @@ class CircleClient {
     };
 
     if (body && method !== 'GET') {
+      headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
     }
 
@@ -27952,12 +27952,10 @@ async function runGetAttestation(client) {
 
 async function runWaitForAttestation(client) {
   const messageHash = coreExports.getInput('message-hash', { required: true });
-  const pollInterval = coreExports.getInput('poll-interval')
-    ? Number(coreExports.getInput('poll-interval'))
-    : undefined;
-  const maxAttempts = coreExports.getInput('max-attempts')
-    ? Number(coreExports.getInput('max-attempts'))
-    : undefined;
+  const pollIntervalInput = coreExports.getInput('poll-interval');
+  const maxAttemptsInput = coreExports.getInput('max-attempts');
+  const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined;
+  const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined;
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
 
@@ -27990,7 +27988,8 @@ async function runCreateWallet(client) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const count = coreExports.getInput('count') ? Number(coreExports.getInput('count')) : 1;
+  const countInput = coreExports.getInput('count');
+  const count = countInput ? Number(countInput) : 1;
   return client.createWallet({ walletSetId, blockchains, count })
 }
 
@@ -28002,7 +28001,8 @@ async function runGetWallet(client) {
 async function runListWallets(client) {
   const walletSetId = coreExports.getInput('wallet-set-id') || undefined;
   const blockchain = coreExports.getInput('blockchain') || undefined;
-  const pageSize = coreExports.getInput('page-size') ? Number(coreExports.getInput('page-size')) : undefined;
+  const pageSizeInput = coreExports.getInput('page-size');
+  const pageSize = pageSizeInput ? Number(pageSizeInput) : undefined;
   return client.listWallets({ walletSetId, blockchain, pageSize })
 }
 
