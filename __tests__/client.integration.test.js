@@ -26,3 +26,24 @@ describeIf(!SKIP)('Integration (IRIS API sandbox)', () => {
     expect(result.chainId).toBe(1)
   })
 })
+
+// Platform API — requires CIRCLE_API_KEY env var
+const API_KEY = process.env.CIRCLE_API_KEY
+
+describeIf(API_KEY)('Integration (Platform API)', () => {
+  const client = new CircleClient({ apiKey: API_KEY })
+
+  test('list-wallets returns array', async () => {
+    const result = await client.listWallets()
+    expect(Array.isArray(result)).toBe(true)
+  })
+
+  test('screen-address approves known good address', async () => {
+    // Vitalik's address — well known, not sanctioned
+    const result = await client.screenAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', {
+      chain: 'ETH-SEPOLIA',
+    })
+    expect(result.result).toBe('APPROVED')
+    expect(result.address).toBe('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')
+  })
+})

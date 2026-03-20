@@ -15,6 +15,9 @@ inputs:
   api-key:
     description: 'Circle Platform API key (required for wallet/transaction/compliance commands, not for CCTP)'
     required: false
+  entity-secret:
+    description: 'Entity secret (32-byte hex) for wallet creation and transaction signing'
+    required: false
   api-url:
     description: 'Circle Platform API base URL override'
     required: false

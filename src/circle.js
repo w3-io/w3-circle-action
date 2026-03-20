@@ -78,6 +78,7 @@ export class CircleClient {
   constructor({
     apiKey,
     apiUrl,
+    entitySecret,
     irisUrl,
     sandbox = false,
     maxRetries = 3,
@@ -85,6 +86,7 @@ export class CircleClient {
     timeout = 30,
   } = {}) {
     this.apiKey = apiKey || null
+    this.entitySecret = entitySecret || null
     this.apiUrl = apiUrl ? apiUrl.replace(/\/+$/, '') : DEFAULT_API_URL
     this.irisUrl = irisUrl
       ? irisUrl.replace(/\/+$/, '')
@@ -227,6 +229,51 @@ export class CircleClient {
   }
 
   /**
+   * Get the entity secret ciphertext for write operations.
+   *
+   * Circle requires an entitySecretCiphertext for wallet creation,
+   * transfers, and signing. The entity secret (32-byte hex) is encrypted
+   * with Circle's RSA public key.
+   *
+   * @returns {Promise<string>} Base64-encoded RSA-OAEP ciphertext
+   */
+  async getEntitySecretCiphertext() {
+    if (!this.entitySecret) {
+      throw new CircleError(
+        'entity-secret is required for write operations (wallet creation, transfers)',
+        { code: 'MISSING_ENTITY_SECRET' },
+      )
+    }
+
+    // Fetch Circle's RSA public key
+    const keyData = await this.platformRequest('GET', '/v1/w3s/config/entity/publicKey')
+    const pem = keyData.data?.publicKey
+    if (!pem) {
+      throw new CircleError('Failed to fetch Circle public key', { code: 'PUBLIC_KEY_ERROR' })
+    }
+
+    // Import RSA public key
+    const pemBody = pem
+      .replace('-----BEGIN PUBLIC KEY-----', '')
+      .replace('-----END PUBLIC KEY-----', '')
+      .replace(/\s/g, '')
+    const binaryDer = Buffer.from(pemBody, 'base64')
+    const publicKey = await crypto.subtle.importKey(
+      'spki',
+      binaryDer,
+      { name: 'RSA-OAEP', hash: 'SHA-256' },
+      false,
+      ['encrypt'],
+    )
+
+    // Encrypt the entity secret
+    const secretBytes = Buffer.from(this.entitySecret, 'hex')
+    const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, secretBytes)
+
+    return Buffer.from(encrypted).toString('base64')
+  }
+
+  /**
    * Create a wallet set to group related wallets.
    *
    * @param {object} options
@@ -237,10 +284,11 @@ export class CircleClient {
     this.requireApiKey()
     if (!name) throw new CircleError('name is required', { code: 'MISSING_NAME' })
 
-    const data = await this.platformRequest('POST', '/v1/w3s/developer/walletSets', {
-      idempotencyKey: crypto.randomUUID(),
-      name,
-    })
+    const body = { idempotencyKey: crypto.randomUUID(), name }
+    if (this.entitySecret) {
+      body.entitySecretCiphertext = await this.getEntitySecretCiphertext()
+    }
+    const data = await this.platformRequest('POST', '/v1/w3s/developer/walletSets', body)
     return data.data?.walletSet || data
   }
 
@@ -260,12 +308,11 @@ export class CircleClient {
     if (!blockchains?.length)
       throw new CircleError('blockchains is required', { code: 'MISSING_BLOCKCHAINS' })
 
-    const data = await this.platformRequest('POST', '/v1/w3s/developer/wallets', {
-      idempotencyKey: crypto.randomUUID(),
-      walletSetId,
-      blockchains,
-      count,
-    })
+    const body = { idempotencyKey: crypto.randomUUID(), walletSetId, blockchains, count }
+    if (this.entitySecret) {
+      body.entitySecretCiphertext = await this.getEntitySecretCiphertext()
+    }
+    const data = await this.platformRequest('POST', '/v1/w3s/developer/wallets', body)
     return data.data?.wallets || data
   }
 
@@ -348,6 +395,9 @@ export class CircleClient {
       amounts: [amount],
       feeLevel: 'MEDIUM',
     }
+    if (this.entitySecret) {
+      body.entitySecretCiphertext = await this.getEntitySecretCiphertext()
+    }
 
     if (tokenId) body.tokenId = tokenId
     if (blockchain) body.blockchain = blockchain
@@ -404,12 +454,14 @@ export class CircleClient {
    * @param {string} address - Blockchain address to screen
    * @returns {object} Screening result with risk indicators
    */
-  async screenAddress(address) {
+  async screenAddress(address, { chain = 'ETH-SEPOLIA' } = {}) {
     this.requireApiKey()
     if (!address) throw new CircleError('address is required', { code: 'MISSING_ADDRESS' })
 
     const data = await this.platformRequest('POST', '/v1/w3s/compliance/screening/addresses', {
+      idempotencyKey: crypto.randomUUID(),
       address,
+      chain,
     })
     return data.data || data
   }

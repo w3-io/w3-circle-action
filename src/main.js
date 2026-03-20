@@ -36,6 +36,7 @@ export async function run() {
     const client = new CircleClient({
       apiKey: core.getInput('api-key') || undefined,
       apiUrl: core.getInput('api-url') || undefined,
+      entitySecret: core.getInput('entity-secret') || undefined,
       irisUrl: core.getInput('iris-url') || undefined,
       sandbox: core.getInput('sandbox') === 'true',
       maxRetries: core.getInput('max-retries') ? Number(core.getInput('max-retries')) : undefined,
@@ -147,7 +148,8 @@ async function runEstimateFee(client) {
 
 async function runScreenAddress(client) {
   const address = core.getInput('address', { required: true })
-  return client.screenAddress(address)
+  const chain = core.getInput('blockchain') || undefined
+  return client.screenAddress(address, { chain })
 }
 
 // -- Job summary ------------------------------------------------------------
