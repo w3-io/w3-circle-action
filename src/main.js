@@ -1,30 +1,26 @@
-/**
- * Command router and output formatter.
- *
- * This file wires your client to the GitHub Actions runtime. It:
- *   1. Reads the `command` input to determine which operation to run
- *   2. Creates your client with the provided credentials
- *   3. Calls the appropriate handler function
- *   4. Sets the `result` output as a JSON string
- *   5. Writes a job summary for visibility in the Actions UI
- *   6. Reports errors cleanly via core.setFailed()
- *
- * To add a new command:
- *   1. Write a handler function (async, takes client, returns result)
- *   2. Add it to the COMMANDS map
- *   3. Add summary rendering in writeSummary() if appropriate
- */
-
 import * as core from '@actions/core'
-// TODO: Update this import to match your renamed client
-import { Client, ClientError } from './client.js'
+import { CircleClient, CircleError } from './circle.js'
 
-// TODO: Replace with your commands. Each key is a command name that users
-// pass via the `command` input. Each value is an async function that takes
-// the client and returns a result object.
 const COMMANDS = {
-  'example-command': runExampleCommand,
-  // 'another-command': runAnotherCommand,
+  // CCTP (IRIS API — no auth)
+  'get-attestation': runGetAttestation,
+  'wait-for-attestation': runWaitForAttestation,
+  'get-supported-chains': runGetSupportedChains,
+  'get-domain-info': runGetDomainInfo,
+  // Setup (Platform API — requires api-key + entity-secret)
+  'register-entity-secret': runRegisterEntitySecret,
+  // Wallets (Platform API — requires api-key)
+  'create-wallet-set': runCreateWalletSet,
+  'create-wallet': runCreateWallet,
+  'get-wallet': runGetWallet,
+  'list-wallets': runListWallets,
+  'get-balance': runGetBalance,
+  // Transactions (Platform API — requires api-key)
+  transfer: runTransfer,
+  'get-transaction': runGetTransaction,
+  'estimate-fee': runEstimateFee,
+  // Compliance (Platform API — requires api-key)
+  'screen-address': runScreenAddress,
 }
 
 export async function run() {
@@ -33,15 +29,21 @@ export async function run() {
     const handler = COMMANDS[command]
 
     if (!handler) {
-      core.setFailed(`Unknown command: "${command}". Available: ${Object.keys(COMMANDS).join(', ')}`)
+      core.setFailed(
+        `Unknown command: "${command}". Available: ${Object.keys(COMMANDS).join(', ')}`,
+      )
       return
     }
 
-    // TODO: Update constructor args to match your client.
-    // Remove apiKey if your API doesn't need auth.
-    const client = new Client({
-      apiKey: core.getInput('api-key', { required: true }),
-      baseUrl: core.getInput('api-url') || undefined,
+    const client = new CircleClient({
+      apiKey: core.getInput('api-key') || undefined,
+      apiUrl: core.getInput('api-url') || undefined,
+      entitySecret: core.getInput('entity-secret') || undefined,
+      irisUrl: core.getInput('iris-url') || undefined,
+      sandbox: core.getInput('sandbox') === 'true',
+      maxRetries: core.getInput('max-retries') ? Number(core.getInput('max-retries')) : undefined,
+      retryDelay: core.getInput('retry-delay') ? Number(core.getInput('retry-delay')) : undefined,
+      timeout: core.getInput('timeout') ? Number(core.getInput('timeout')) : undefined,
     })
 
     const result = await handler(client)
@@ -49,9 +51,8 @@ export async function run() {
 
     writeSummary(command, result)
   } catch (error) {
-    // TODO: Update error class name to match yours
-    if (error instanceof ClientError) {
-      core.setFailed(`${error.name} (${error.code}): ${error.message}`)
+    if (error instanceof CircleError) {
+      core.setFailed(`Circle error (${error.code}): ${error.message}`)
     } else {
       core.setFailed(error.message)
     }
@@ -59,26 +60,150 @@ export async function run() {
 }
 
 // -- Command handlers -------------------------------------------------------
-// Each handler reads its own inputs, calls the client, returns a result.
-// Keep these thin — business logic belongs in the client.
 
-async function runExampleCommand(client) {
-  // TODO: Read your command-specific inputs here
-  const input = core.getInput('input', { required: true })
+async function runGetAttestation(client) {
+  const messageHash = core.getInput('message-hash', { required: true })
+  return client.getAttestation(messageHash)
+}
 
-  return client.exampleCommand(input)
+async function runWaitForAttestation(client) {
+  const messageHash = core.getInput('message-hash', { required: true })
+  const pollInterval = core.getInput('poll-interval')
+    ? Number(core.getInput('poll-interval'))
+    : undefined
+  const maxAttempts = core.getInput('max-attempts')
+    ? Number(core.getInput('max-attempts'))
+    : undefined
+  return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
+}
+
+async function runGetSupportedChains(client) {
+  const network = core.getInput('network') || undefined
+  return client.getSupportedChains(network)
+}
+
+async function runGetDomainInfo(client) {
+  const chain = core.getInput('chain', { required: true })
+  return client.getDomainInfo(chain)
+}
+
+// -- Platform API: Setup ----------------------------------------------------
+
+async function runRegisterEntitySecret(client) {
+  return client.registerEntitySecret()
+}
+
+// -- Platform API: Wallets --------------------------------------------------
+
+async function runCreateWalletSet(client) {
+  const name = core.getInput('name', { required: true })
+  return client.createWalletSet({ name })
+}
+
+async function runCreateWallet(client) {
+  const walletSetId = core.getInput('wallet-set-id', { required: true })
+  const blockchains = core
+    .getInput('blockchains', { required: true })
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const count = core.getInput('count') ? Number(core.getInput('count')) : 1
+  return client.createWallet({ walletSetId, blockchains, count })
+}
+
+async function runGetWallet(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  return client.getWallet(walletId)
+}
+
+async function runListWallets(client) {
+  const walletSetId = core.getInput('wallet-set-id') || undefined
+  const blockchain = core.getInput('blockchain') || undefined
+  const pageSize = core.getInput('page-size') ? Number(core.getInput('page-size')) : undefined
+  return client.listWallets({ walletSetId, blockchain, pageSize })
+}
+
+async function runGetBalance(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  return client.getBalance(walletId)
+}
+
+// -- Platform API: Transactions ---------------------------------------------
+
+async function runTransfer(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  const destinationAddress = core.getInput('destination-address', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  const tokenId = core.getInput('token-id') || undefined
+  const blockchain = core.getInput('blockchain') || undefined
+  return client.transfer({ walletId, destinationAddress, tokenId, amount, blockchain })
+}
+
+async function runGetTransaction(client) {
+  const transactionId = core.getInput('transaction-id', { required: true })
+  return client.getTransaction(transactionId)
+}
+
+async function runEstimateFee(client) {
+  const walletId = core.getInput('wallet-id', { required: true })
+  const destinationAddress = core.getInput('destination-address', { required: true })
+  const tokenId = core.getInput('token-id', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  return client.estimateFee({ walletId, destinationAddress, tokenId, amount })
+}
+
+// -- Platform API: Compliance -----------------------------------------------
+
+async function runScreenAddress(client) {
+  const address = core.getInput('address', { required: true })
+  const chain = core.getInput('blockchain') || undefined
+  return client.screenAddress(address, { chain })
 }
 
 // -- Job summary ------------------------------------------------------------
-// Optional but recommended. Renders a visible summary in the Actions UI.
-// See https://github.blog/news-insights/product-news/supercharging-github-actions-with-job-summaries/
 
 function writeSummary(command, result) {
-  // TODO: Customize the summary for your action. A table of key results
-  // works well. Delete this function if your action doesn't need a summary.
+  const heading = `Circle: ${command}`
+
+  if (command === 'get-attestation' || command === 'wait-for-attestation') {
+    const status = result.status === 'complete' ? 'Complete' : 'Pending'
+    core.summary
+      .addHeading(heading, 3)
+      .addRaw(`**Message Hash:** \`${result.messageHash}\`\n\n`)
+      .addRaw(`**Status:** ${status}\n\n`)
+    if (result.attestation) {
+      core.summary.addRaw(`**Attestation:** \`${result.attestation.slice(0, 20)}...\`\n\n`)
+    }
+    if (result.attempts) {
+      core.summary.addRaw(`**Poll attempts:** ${result.attempts}\n\n`)
+    }
+    core.summary.write()
+    return
+  }
+
+  if (command === 'get-supported-chains' && result.chains) {
+    const headerRow = [
+      { data: 'Name', header: true },
+      { data: 'Domain', header: true },
+      { data: 'Chain ID', header: true },
+      { data: 'Network', header: true },
+    ]
+    const dataRows = result.chains.map((c) => [
+      c.name,
+      String(c.domain),
+      String(c.chainId),
+      c.network,
+    ])
+
+    core.summary
+      .addHeading(heading, 3)
+      .addTable([headerRow, ...dataRows])
+      .write()
+    return
+  }
+
   core.summary
-    .addHeading('Action Result', 3)
-    .addRaw(`**Command:** \`${command}\`\n\n`)
+    .addHeading(heading, 3)
     .addCodeBlock(JSON.stringify(result, null, 2), 'json')
     .write()
 }

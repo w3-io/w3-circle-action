@@ -1,154 +1,387 @@
 ---
-title: YourPartner Integration
+title: Circle
 category: integrations
-actions: [example-command]
-complexity: beginner
+actions:
+  [
+    get-attestation,
+    wait-for-attestation,
+    get-supported-chains,
+    get-domain-info,
+    create-wallet-set,
+    create-wallet,
+    get-wallet,
+    list-wallets,
+    get-balance,
+    transfer,
+    get-transaction,
+    estimate-fee,
+    screen-address,
+  ]
+complexity: intermediate
 ---
 
-<!--
-  TODO: This guide is synced to the W3 MCP server and shown to AI agents
-  and developers. It's the primary reference for your action.
+# Circle
 
-  IMPORTANT: Lead with partner context, not just technical reference.
-  AI agents use this to decide WHETHER to recommend your action, not
-  just HOW to use it. A guide without partner context is invisible
-  to recommendation — the AI has no basis for suggesting it.
+[Circle](https://circle.com) is the issuer of USDC, the leading regulated
+stablecoin with $30B+ in circulation across 19+ blockchains. Their
+Cross-Chain Transfer Protocol (CCTP) enables native USDC transfers between
+chains through a burn-and-mint mechanism — no bridge, no wrapped tokens, no
+liquidity fragmentation. CCTP is audited by Trail of Bits and Halborn, and
+is the only protocol that burns and mints native USDC. Use this action to
+track cross-chain USDC transfer attestations, look up chain domain info,
+and integrate CCTP into automated workflows.
 
-  Structure:
-    1. Partner context (who, what, why — see examples below)
-    2. Technical summary (one sentence)
-    3. Quick start (copy-pasteable workflow snippet)
-    4. Command reference with input/output tables
-    5. Output schema example (actual JSON)
-    6. Usage patterns (composing with other steps)
-    7. Authentication
-    8. Security (if accepting user-constructed strings)
-    9. Error handling
-
-  Examples of good partner context (from real actions):
-
-  Cube3: "[Cube3](https://cube3.ai) is a crime intelligence platform
-  that maps fraud networks across blockchain. Their Inspector API scores
-  addresses across four risk dimensions — fraud, compliance, cyber, and
-  combined — detecting mule accounts 45-87 days before traditional systems."
-
-  Pyth: "[Pyth Network](https://pyth.network) is a decentralized oracle
-  providing institutional-grade price data across 100+ blockchains. Unlike
-  scraped oracles, Pyth sources data directly from first-party publishers."
-
-  Notice the pattern: [Partner](url) is a [what they are] that [what they do].
-  [Key differentiator]. [Trust signal]. Use this action to [why].
--->
-
-# YourPartner Integration
-
-<!-- TODO: Replace with your partner context paragraph. Include:
-  - Who: [Partner](url) is a [what they are]
-  - What: [core capability, key differentiator]
-  - Trust: [certifications, audits, user count, endorsements]
-  - Why: Use this action to [specific workflow use cases]
--->
-
-TODO: Partner context paragraph here. See the comment above for format.
-
-<!-- TODO: Replace with a one-line technical summary -->
-
-TODO: One sentence describing what this action exposes from the partner API.
+Query Circle's IRIS attestation API and CCTP domain registry for
+cross-chain USDC transfer orchestration.
 
 ## Quick start
 
 ```yaml
-- name: Do something
-  uses: w3-io/w3-yourpartner-action@v0
+- name: Check attestation status
+  id: attest
+  uses: w3-io/w3-circle-action@v0
   with:
-    command: example-command
-    api-key: ${{ secrets.YOURPARTNER_API_KEY }}
-    input: "some-value"
+    command: get-attestation
+    sandbox: 'true'
+    message-hash: ${{ steps.burn.outputs.message_hash }}
 ```
+
+## How CCTP works
+
+1. **Burn** — Call `depositForBurn` on the source chain's TokenMessenger
+   contract. This burns USDC and emits a `MessageSent` event containing
+   the message bytes.
+
+2. **Attest** — Circle's attestation service observes the burn and signs
+   the message. Poll `get-attestation` (or use `wait-for-attestation`)
+   with the keccak256 hash of the message bytes.
+
+3. **Mint** — Call `receiveMessage` on the destination chain's
+   MessageTransmitter contract, passing the original message bytes and
+   Circle's attestation signature. Native USDC is minted to the recipient.
+
+This action handles step 2 (attestation). Steps 1 and 3 require on-chain
+transactions — see "Beyond this W3 integration" below.
 
 ## Commands
 
-### example-command
+### get-attestation
 
-TODO: Describe what this command does and when you'd use it.
+Check whether Circle has attested a CCTP message. Returns `complete` with
+the attestation signature, or `pending_confirmations` if not yet signed.
 
-**Inputs:**
-
-| Input | Required | Description |
-|-------|----------|-------------|
-| `input` | yes | TODO |
+| Input          | Required | Description                                          |
+| -------------- | -------- | ---------------------------------------------------- |
+| `message-hash` | yes      | 0x-prefixed keccak256 hash of the CCTP message bytes |
+| `sandbox`      | no       | Use testnet IRIS API (default: false)                |
 
 **Output (`result`):**
 
 ```json
 {
-  "TODO": "document your output schema here"
+  "messageHash": "0xabcdef...",
+  "status": "complete",
+  "attestation": "0x1234..."
+}
+```
+
+When pending:
+
+```json
+{
+  "messageHash": "0xabcdef...",
+  "status": "pending_confirmations",
+  "attestation": null
+}
+```
+
+### wait-for-attestation
+
+Poll for attestation until complete or timeout. Useful in workflows
+that need the attestation before proceeding to mint.
+
+| Input           | Required | Description                           |
+| --------------- | -------- | ------------------------------------- |
+| `message-hash`  | yes      | 0x-prefixed keccak256 hash            |
+| `poll-interval` | no       | Seconds between polls (default: 5)    |
+| `max-attempts`  | no       | Maximum poll attempts (default: 60)   |
+| `sandbox`       | no       | Use testnet IRIS API (default: false) |
+
+**Output (`result`):**
+
+```json
+{
+  "messageHash": "0xabcdef...",
+  "status": "complete",
+  "attestation": "0x1234...",
+  "attempts": 12
+}
+```
+
+### get-supported-chains
+
+List all chains supported by CCTP with domain numbers, chain IDs, and
+USDC contract addresses.
+
+| Input     | Required | Description                    |
+| --------- | -------- | ------------------------------ |
+| `network` | no       | Filter: `mainnet` or `testnet` |
+
+**Output (`result`):**
+
+```json
+{
+  "chains": [
+    {
+      "name": "ethereum",
+      "domain": 0,
+      "chainId": 1,
+      "usdc": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "network": "mainnet",
+      "contracts": null
+    },
+    {
+      "name": "ethereum-sepolia",
+      "domain": 0,
+      "chainId": 11155111,
+      "usdc": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+      "network": "testnet",
+      "contracts": {
+        "tokenMessenger": "0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5",
+        "messageTransmitter": "0x7865fafc2db2093669d92c0f33aeef291086befd"
+      }
+    }
+  ],
+  "count": 9
+}
+```
+
+### get-domain-info
+
+Get CCTP domain info for a specific chain.
+
+| Input   | Required | Description                                      |
+| ------- | -------- | ------------------------------------------------ |
+| `chain` | yes      | Chain name (e.g. `ethereum`, `arbitrum-sepolia`) |
+
+**Output (`result`):**
+
+```json
+{
+  "name": "arbitrum-sepolia",
+  "domain": 3,
+  "chainId": 421614,
+  "usdc": "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d",
+  "network": "testnet",
+  "contracts": {
+    "tokenMessenger": "0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5",
+    "messageTransmitter": "0xacf1ceef35caac005e15888ddb8a3515c41b4872"
+  }
 }
 ```
 
 ## Using the result
 
-```yaml
-- name: Run action
-  id: step1
-  uses: w3-io/w3-yourpartner-action@v0
-  with:
-    command: example-command
-    api-key: ${{ secrets.YOURPARTNER_API_KEY }}
-    input: "value"
+### Full CCTP transfer workflow
 
-- name: Use the result
+```yaml
+- name: Get source chain info
+  id: source
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: get-domain-info
+    chain: ethereum-sepolia
+
+- name: Get destination chain info
+  id: dest
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: get-domain-info
+    chain: arbitrum-sepolia
+
+# Step 1: Burn USDC on source chain (on-chain tx, not yet in this action)
+# This emits a MessageSent event with the message bytes
+
+# Step 2: Wait for attestation
+- name: Wait for attestation
+  id: attest
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: wait-for-attestation
+    sandbox: 'true'
+    message-hash: ${{ steps.burn.outputs.message_hash }}
+    poll-interval: '10'
+    max-attempts: '30'
+
+# Step 3: Mint on destination chain using the attestation
+- name: Use attestation
   run: |
-    echo '${{ steps.step1.outputs.result }}' | jq .
+    ATTESTATION=$(echo '${{ steps.attest.outputs.result }}' | jq -r '.attestation')
+    echo "Attestation ready: ${ATTESTATION:0:20}..."
+```
+
+## Wallet commands
+
+These commands require a Circle Platform API key (`api-key` input).
+
+### create-wallet-set
+
+Create a wallet set to group related wallets.
+
+| Input  | Required | Description     |
+| ------ | -------- | --------------- |
+| `name` | yes      | Wallet set name |
+
+### create-wallet
+
+Create developer-controlled wallets in a wallet set.
+
+| Input           | Required | Description                                         |
+| --------------- | -------- | --------------------------------------------------- |
+| `wallet-set-id` | yes      | Wallet set UUID                                     |
+| `blockchains`   | yes      | Comma-separated blockchain IDs (e.g. "ETH-SEPOLIA") |
+| `count`         | no       | Number of wallets (default: 1)                      |
+
+### get-wallet
+
+Get wallet details by ID.
+
+| Input       | Required | Description |
+| ----------- | -------- | ----------- |
+| `wallet-id` | yes      | Wallet UUID |
+
+### list-wallets
+
+List wallets with optional filters.
+
+| Input           | Required | Description           |
+| --------------- | -------- | --------------------- |
+| `wallet-set-id` | no       | Filter by wallet set  |
+| `blockchain`    | no       | Filter by blockchain  |
+| `page-size`     | no       | Results per page (10) |
+
+### get-balance
+
+Get token balances for a wallet.
+
+| Input       | Required | Description |
+| ----------- | -------- | ----------- |
+| `wallet-id` | yes      | Wallet UUID |
+
+## Transaction commands
+
+### transfer
+
+Transfer tokens from a developer-controlled wallet.
+
+| Input                 | Required | Description           |
+| --------------------- | -------- | --------------------- |
+| `wallet-id`           | yes      | Source wallet UUID    |
+| `destination-address` | yes      | Recipient address     |
+| `amount`              | yes      | Amount (e.g. "1.50")  |
+| `token-id`            | no       | Circle token UUID     |
+| `blockchain`          | no       | Blockchain identifier |
+
+### get-transaction
+
+Get transaction details and status.
+
+| Input            | Required | Description      |
+| ---------------- | -------- | ---------------- |
+| `transaction-id` | yes      | Transaction UUID |
+
+### estimate-fee
+
+Estimate gas fee before executing a transfer.
+
+| Input                 | Required | Description        |
+| --------------------- | -------- | ------------------ |
+| `wallet-id`           | yes      | Source wallet UUID |
+| `destination-address` | yes      | Recipient address  |
+| `token-id`            | yes      | Circle token UUID  |
+| `amount`              | yes      | Transfer amount    |
+
+## Compliance commands
+
+### screen-address
+
+Screen a blockchain address for KYC/AML compliance.
+
+| Input     | Required | Description                  |
+| --------- | -------- | ---------------------------- |
+| `address` | yes      | Blockchain address to screen |
+
+## Wallet workflow example
+
+```yaml
+- name: Create wallet set
+  id: ws
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: create-wallet-set
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    name: 'my-app-wallets'
+
+- name: Create wallet
+  id: wallet
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: create-wallet
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    wallet-set-id: ${{ fromJSON(steps.ws.outputs.result).id }}
+    blockchains: 'ETH-SEPOLIA'
+
+- name: Check balance
+  uses: w3-io/w3-circle-action@v0
+  with:
+    command: get-balance
+    api-key: ${{ secrets.CIRCLE_API_KEY }}
+    wallet-id: ${{ fromJSON(steps.wallet.outputs.result)[0].id }}
 ```
 
 ## Beyond this W3 integration
 
-<!--
-  TODO: If your partner has capabilities beyond what this action exposes,
-  document them here. This is especially important for partners with
-  on-chain components — smart contracts, oracles, ZK proofs — that
-  complement the off-chain API.
+This action covers CCTP attestation, programmable wallets, and compliance
+screening. Circle's full cross-chain transfer also requires on-chain
+transactions on both source and destination chains:
 
-  The pattern:
+| Layer                     | What                                        | Trust model                  |
+| ------------------------- | ------------------------------------------- | ---------------------------- |
+| This action (off-chain)   | Attestation, wallets, transfers, compliance | IRIS (public) + Platform API |
+| CCTP contracts (on-chain) | Burn USDC (source), mint USDC (destination) | Smart contract verification  |
 
-  | Layer | What | Trust model |
-  |-------|------|-------------|
-  | This action (off-chain) | [what the action does] | [how it's secured] |
-  | Partner on-chain | [what smart contracts can do] | [crypto verification] |
+**On-chain contracts:**
 
-  Examples from existing actions:
+- `TokenMessenger.depositForBurn()` — burns USDC on source chain
+- `MessageTransmitter.receiveMessage()` — mints USDC on destination chain
 
-  Pyth: Action provides prices for workflow decisions. On-chain oracle
-  provides the same prices with cryptographic proof for smart contracts.
-  Same feed IDs work in both layers.
+Contract addresses for testnet chains are included in `get-domain-info`
+output. For mainnet addresses, see [Circle's CCTP docs](https://developers.circle.com/stablecoins/docs/cctp-getting-started).
 
-  SxT: Action queries data via REST API. ZK coprocessor delivers
-  proven query results to smart contracts. Same tables accessible
-  from both layers.
-
-  Cube3: Action screens addresses pre-transaction. On-chain SDK
-  blocks malicious transactions at the smart contract level.
-
-  Even if the on-chain capability isn't accessible through W3 today,
-  documenting it helps AI agents recommend the full solution — and
-  helps users understand the partner's complete offering.
-
-  If the partner has no on-chain component, document other platform
-  capabilities not exposed by this action (managed services, CLIs,
-  dashboards, training pipelines, etc.).
--->
-
-TODO: Document partner capabilities beyond this action's API surface.
+Get testnet USDC from [faucet.circle.com](https://faucet.circle.com).
 
 ## Authentication
 
-TODO: Where to get credentials. What secret name to use. Link to
-the partner's developer portal or API key page.
+**CCTP commands require no authentication.** The IRIS attestation API
+is public.
+
+**Wallet, transaction, and compliance commands** require a Circle
+Platform API key. Get one from [console.circle.com](https://console.circle.com).
+The key format is `ENV:ID:SECRET` (e.g. `TEST_API_KEY:abc123:def456`).
+
+```yaml
+with:
+  api-key: ${{ secrets.CIRCLE_API_KEY }}
+```
 
 ## Error handling
 
 The action fails with a descriptive message on:
-- Missing or invalid API key
-- API errors (4xx, 5xx)
-- Invalid response format
+
+- Missing required inputs (`message-hash`, `chain`, `wallet-id`, etc.)
+- Missing API key for Platform API commands
+- Unknown chain name (lists available chains)
+- IRIS API errors (5xx)
+- Platform API errors (401 invalid key, 400 bad request, 5xx)
+- Attestation timeout (`wait-for-attestation` exceeds max-attempts)
+- Invalid JSON response

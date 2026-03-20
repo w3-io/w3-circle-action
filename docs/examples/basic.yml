@@ -1,32 +1,40 @@
-# TODO: Replace with a realistic example workflow for your action.
-#
-# This file serves as both documentation and a testable example.
-# It should be copy-pasteable — a user should be able to use this
-# workflow with minimal changes (just adding their secret).
-
-name: YourPartner example
+name: Circle CCTP attestation check
 
 on:
   workflow_dispatch:
     inputs:
-      input:
-        description: Value to pass to the action
+      message-hash:
+        description: 'CCTP message hash (0x-prefixed keccak256)'
         required: true
 
 jobs:
-  example:
+  check-attestation:
     runs-on: ubuntu-latest
-    environment: production
     steps:
-      - name: Run action
-        id: result
-        uses: w3-io/w3-yourpartner-action@v1
+      - name: Check attestation
+        id: attest
+        uses: w3-io/w3-circle-action@v0
         with:
-          command: example-command
-          api-key: ${{ secrets.YOURPARTNER_API_KEY }}
-          input: ${{ inputs.input }}
+          command: get-attestation
+          sandbox: 'true'
+          message-hash: ${{ inputs.message-hash }}
 
-      - name: Show results
+      - name: Show result
         run: |
-          echo "Result:"
-          echo '${{ steps.result.outputs.result }}' | jq .
+          echo "Attestation status:"
+          echo '${{ steps.attest.outputs.result }}' | jq .
+
+  list-chains:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get testnet chains
+        id: chains
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: get-supported-chains
+          network: testnet
+
+      - name: Show chains
+        run: |
+          echo "Supported testnet chains:"
+          echo '${{ steps.chains.outputs.result }}' | jq '.chains[] | {name, domain, chainId}'
