@@ -1,8 +1,8 @@
 {
-  "name": "w3-yourpartner-action",
+  "name": "w3-circle-action",
   "version": "1.0.0",
   "private": true,
-  "description": "TODO: Your action description",
+  "description": "W3 Circle Action — CCTP cross-chain USDC transfers via Circle APIs",
   "type": "module",
   "scripts": {
     "bundle": "npm run format:write && npm run package",
@@ -17,6 +17,7 @@
     "@actions/core": "^1.11.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@rollup/plugin-commonjs": "^28.0.0",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",

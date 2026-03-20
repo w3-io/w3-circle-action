@@ -1,44 +1,71 @@
-# TODO: This file describes your action for the W3 MCP server.
-# AI agents use this to discover your action, understand its commands,
-# and generate correct workflow YAML. Keep it in sync with action.yml.
-#
-# On release, this file is synced to the MCP's registry.yaml.
-
-kind: integration              # integration | primitive | utility
-partner: yourpartner           # TODO: machine-readable partner ID
-name: YourPartner Integration  # TODO: human-readable name
+kind: integration
+partner: circle
+name: Circle CCTP
 version: 1.0.0
-repo: w3-io/w3-yourpartner-action  # TODO: your repo
-
+repo: w3-io/w3-circle-action
 commands:
-  # TODO: Define each command your action supports. Example:
-  #
-  # - name: inspect
-  #   description: >
-  #     Risk assessment for a blockchain address. Returns per-chain
-  #     scores for fraud, compliance, and cyber risk.
-  #   inputs:
-  #     address:
-  #       type: string
-  #       required: true
-  #       description: Blockchain address to inspect
-  #     chain-id:
-  #       type: string
-  #       required: false
-  #       description: Filter to a specific chain
-  #   outputs:
-  #     result:
-  #       type: object
-  #       description: Full risk score breakdown
-
-  - name: example-command
-    description: TODO - describe what this command does
+  - name: get-attestation
+    description: >
+      Get CCTP attestation status for a cross-chain message. Returns the
+      attestation signature once Circle's attestation service has observed
+      and signed the MessageSent event from the source chain.
     inputs:
-      input:
+      message-hash:
         type: string
         required: true
-        description: TODO - describe this input
+        description: 0x-prefixed keccak256 hash of the CCTP message
     outputs:
       result:
         type: object
-        description: TODO - describe the output shape
+        description: '{messageHash, status, attestation}'
+
+  - name: wait-for-attestation
+    description: >
+      Poll for CCTP attestation until complete or timeout. Use this in
+      workflows that need to wait for attestation before calling
+      receiveMessage on the destination chain.
+    inputs:
+      message-hash:
+        type: string
+        required: true
+        description: 0x-prefixed keccak256 hash of the CCTP message
+      poll-interval:
+        type: number
+        required: false
+        description: 'Seconds between polls (default: 5)'
+      max-attempts:
+        type: number
+        required: false
+        description: 'Maximum poll attempts (default: 60)'
+    outputs:
+      result:
+        type: object
+        description: '{messageHash, status, attestation, attempts}'
+
+  - name: get-supported-chains
+    description: >
+      List all chains supported by CCTP with domain numbers, chain IDs,
+      and USDC contract addresses.
+    inputs:
+      network:
+        type: string
+        required: false
+        description: 'Filter by network: mainnet or testnet'
+    outputs:
+      result:
+        type: object
+        description: '{chains: [{name, domain, chainId, usdc, network, contracts}], count}'
+
+  - name: get-domain-info
+    description: >
+      Get CCTP domain info for a specific chain — domain number, chain ID,
+      USDC address, and contract addresses.
+    inputs:
+      chain:
+        type: string
+        required: true
+        description: 'Chain name (e.g. ethereum, arbitrum-sepolia)'
+    outputs:
+      result:
+        type: object
+        description: '{name, domain, chainId, usdc, network, contracts}'
