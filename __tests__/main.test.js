@@ -381,6 +381,7 @@ describe('run', () => {
       command: 'screen-address',
       'api-key': 'TEST:id:secret',
       address: '0xabc123',
+      blockchain: 'ETH-SEPOLIA',
     })
     mockOk({ data: { result: 'PASS', riskScore: 0 } })
 
@@ -389,6 +390,19 @@ describe('run', () => {
     const result = JSON.parse(mockCore.getOutputs().result)
     expect(result.result).toBe('PASS')
     expect(mockCore.getErrors()).toHaveLength(0)
+  })
+
+  test('screen-address fails without blockchain', async () => {
+    mockCore.setInputs({
+      command: 'screen-address',
+      'api-key': 'TEST:id:secret',
+      address: '0xabc123',
+    })
+
+    await run()
+
+    const errors = mockCore.getErrors()
+    expect(errors).toHaveLength(1)
   })
 
   // -- Platform API: Auth errors ----------------------------------------------

@@ -96,15 +96,7 @@ inputs:
     required: false
     default: '60'
 
-  # Retry configuration
-  max-retries:
-    description: 'Maximum retry attempts (default: 3)'
-    required: false
-    default: '3'
-  retry-delay:
-    description: 'Base retry delay in seconds (default: 2)'
-    required: false
-    default: '2'
+  # Request configuration
   timeout:
     description: 'Request timeout in seconds (default: 30)'
     required: false
