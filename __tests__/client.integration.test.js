@@ -29,17 +29,35 @@ describeIf(!SKIP)('Integration (IRIS API sandbox)', () => {
 
 // Platform API — requires CIRCLE_API_KEY env var
 const API_KEY = process.env.CIRCLE_API_KEY
+const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET
 
 describeIf(API_KEY)('Integration (Platform API)', () => {
-  const client = new CircleClient({ apiKey: API_KEY })
+  const client = new CircleClient({ apiKey: API_KEY, entitySecret: ENTITY_SECRET })
 
   test('list-wallets returns array', async () => {
     const result = await client.listWallets()
     expect(Array.isArray(result)).toBe(true)
   })
 
+  test('get-wallet returns details for existing wallet', async () => {
+    const wallets = await client.listWallets()
+    if (wallets.length === 0) return // skip if no wallets
+
+    const wallet = await client.getWallet(wallets[0].id)
+    expect(wallet.id).toBe(wallets[0].id)
+    expect(wallet.address).toMatch(/^0x/)
+    expect(wallet.state).toBe('LIVE')
+  })
+
+  test('get-balance returns array for existing wallet', async () => {
+    const wallets = await client.listWallets()
+    if (wallets.length === 0) return
+
+    const balances = await client.getBalance(wallets[0].id)
+    expect(Array.isArray(balances)).toBe(true)
+  })
+
   test('screen-address approves known good address', async () => {
-    // Vitalik's address — well known, not sanctioned
     const result = await client.screenAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', {
       chain: 'ETH-SEPOLIA',
     })

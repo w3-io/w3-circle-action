@@ -27532,6 +27532,23 @@ class CircleClient {
   }
 
   /**
+   * Register an entity secret with Circle (one-time setup).
+   *
+   * Must be called before wallet creation or transaction signing.
+   * Returns a recovery file that should be saved securely.
+   *
+   * @returns {{ recoveryFile: string }}
+   */
+  async registerEntitySecret() {
+    this.requireApiKey();
+    const ciphertext = await this.getEntitySecretCiphertext();
+    const data = await this.platformRequest('POST', '/v1/w3s/config/entity/entitySecret', {
+      entitySecretCiphertext: ciphertext,
+    });
+    return data.data || data
+  }
+
+  /**
    * Create a wallet set to group related wallets.
    *
    * @param {object} options
@@ -27828,6 +27845,8 @@ const COMMANDS = {
   'wait-for-attestation': runWaitForAttestation,
   'get-supported-chains': runGetSupportedChains,
   'get-domain-info': runGetDomainInfo,
+  // Setup (Platform API — requires api-key + entity-secret)
+  'register-entity-secret': runRegisterEntitySecret,
   // Wallets (Platform API — requires api-key)
   'create-wallet-set': runCreateWalletSet,
   'create-wallet': runCreateWallet,
@@ -27904,6 +27923,12 @@ async function runGetSupportedChains(client) {
 async function runGetDomainInfo(client) {
   const chain = coreExports.getInput('chain', { required: true });
   return client.getDomainInfo(chain)
+}
+
+// -- Platform API: Setup ----------------------------------------------------
+
+async function runRegisterEntitySecret(client) {
+  return client.registerEntitySecret()
 }
 
 // -- Platform API: Wallets --------------------------------------------------

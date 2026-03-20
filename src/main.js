@@ -7,6 +7,8 @@ const COMMANDS = {
   'wait-for-attestation': runWaitForAttestation,
   'get-supported-chains': runGetSupportedChains,
   'get-domain-info': runGetDomainInfo,
+  // Setup (Platform API — requires api-key + entity-secret)
+  'register-entity-secret': runRegisterEntitySecret,
   // Wallets (Platform API — requires api-key)
   'create-wallet-set': runCreateWalletSet,
   'create-wallet': runCreateWallet,
@@ -83,6 +85,12 @@ async function runGetSupportedChains(client) {
 async function runGetDomainInfo(client) {
   const chain = core.getInput('chain', { required: true })
   return client.getDomainInfo(chain)
+}
+
+// -- Platform API: Setup ----------------------------------------------------
+
+async function runRegisterEntitySecret(client) {
+  return client.registerEntitySecret()
 }
 
 // -- Platform API: Wallets --------------------------------------------------
