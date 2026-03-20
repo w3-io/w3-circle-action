@@ -330,7 +330,7 @@ describe('CircleClient', () => {
     test('calls compliance endpoint', async () => {
       mockOk({ data: { result: 'PASS', riskScore: 0 } })
 
-      const result = await client.screenAddress('0xabc')
+      const result = await client.screenAddress('0xabc', { chain: 'ETH-SEPOLIA' })
 
       expect(result.result).toBe('PASS')
       const [url] = mockFetch.mock.calls[0]
@@ -338,7 +338,13 @@ describe('CircleClient', () => {
     })
 
     test('throws without address', async () => {
-      await expect(client.screenAddress('')).rejects.toThrow('address is required')
+      await expect(client.screenAddress('', { chain: 'ETH' })).rejects.toThrow(
+        'address is required',
+      )
+    })
+
+    test('throws without chain', async () => {
+      await expect(client.screenAddress('0xabc')).rejects.toThrow('blockchain is required')
     })
   })
 

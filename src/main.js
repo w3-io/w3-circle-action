@@ -35,15 +35,14 @@ export async function run() {
       return
     }
 
+    const timeoutInput = core.getInput('timeout')
     const client = new CircleClient({
       apiKey: core.getInput('api-key') || undefined,
       apiUrl: core.getInput('api-url') || undefined,
       entitySecret: core.getInput('entity-secret') || undefined,
       irisUrl: core.getInput('iris-url') || undefined,
       sandbox: core.getInput('sandbox') === 'true',
-      maxRetries: core.getInput('max-retries') ? Number(core.getInput('max-retries')) : undefined,
-      retryDelay: core.getInput('retry-delay') ? Number(core.getInput('retry-delay')) : undefined,
-      timeout: core.getInput('timeout') ? Number(core.getInput('timeout')) : undefined,
+      timeout: timeoutInput ? Number(timeoutInput) : undefined,
     })
 
     const result = await handler(client)
@@ -156,7 +155,7 @@ async function runEstimateFee(client) {
 
 async function runScreenAddress(client) {
   const address = core.getInput('address', { required: true })
-  const chain = core.getInput('blockchain') || undefined
+  const chain = core.getInput('blockchain', { required: true })
   return client.screenAddress(address, { chain })
 }
 

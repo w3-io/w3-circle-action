@@ -22,27 +22,60 @@ const DEFAULT_IRIS_SANDBOX_URL = 'https://iris-api-sandbox.circle.com'
 // Source: https://github.com/circlefin/cctp-sample-app
 const DOMAINS = {
   // Mainnet
-  ethereum: { domain: 0, chainId: 1, usdc: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' },
-  avalanche: { domain: 1, chainId: 43114, usdc: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e' },
-  optimism: { domain: 2, chainId: 10, usdc: '0x0b2c639c533813f4aa9d7837caf62653d097ff85' },
-  arbitrum: { domain: 3, chainId: 42161, usdc: '0xaf88d065e77c8cc2239327c5edb3a432268e5831' },
-  base: { domain: 6, chainId: 8453, usdc: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' },
-  polygon: { domain: 7, chainId: 137, usdc: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359' },
+  ethereum: {
+    domain: 0,
+    chainId: 1,
+    network: 'mainnet',
+    usdc: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  },
+  avalanche: {
+    domain: 1,
+    chainId: 43114,
+    network: 'mainnet',
+    usdc: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e',
+  },
+  optimism: {
+    domain: 2,
+    chainId: 10,
+    network: 'mainnet',
+    usdc: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+  },
+  arbitrum: {
+    domain: 3,
+    chainId: 42161,
+    network: 'mainnet',
+    usdc: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+  },
+  base: {
+    domain: 6,
+    chainId: 8453,
+    network: 'mainnet',
+    usdc: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+  },
+  polygon: {
+    domain: 7,
+    chainId: 137,
+    network: 'mainnet',
+    usdc: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+  },
 
   // Testnet (Sepolia / Fuji)
   'ethereum-sepolia': {
     domain: 0,
     chainId: 11155111,
+    network: 'testnet',
     usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238',
   },
   'avalanche-fuji': {
     domain: 1,
     chainId: 43113,
+    network: 'testnet',
     usdc: '0x5425890298aed601595a70ab815c96711a31bc65',
   },
   'arbitrum-sepolia': {
     domain: 3,
     chainId: 421614,
+    network: 'testnet',
     usdc: '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d',
   },
 }
@@ -75,26 +108,16 @@ export class CircleError extends Error {
 }
 
 export class CircleClient {
-  constructor({
-    apiKey,
-    apiUrl,
-    entitySecret,
-    irisUrl,
-    sandbox = false,
-    maxRetries = 3,
-    retryDelay = 2,
-    timeout = 30,
-  } = {}) {
+  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30 } = {}) {
     this.apiKey = apiKey || null
     this.entitySecret = entitySecret || null
+    this.cachedPublicKey = null
     this.apiUrl = apiUrl ? apiUrl.replace(/\/+$/, '') : DEFAULT_API_URL
     this.irisUrl = irisUrl
       ? irisUrl.replace(/\/+$/, '')
       : sandbox
         ? DEFAULT_IRIS_SANDBOX_URL
         : DEFAULT_IRIS_URL
-    this.maxRetries = maxRetries
-    this.retryDelay = retryDelay
     this.timeout = timeout * 1000
   }
 
@@ -141,7 +164,7 @@ export class CircleClient {
       domain: info.domain,
       chainId: info.chainId,
       usdc: info.usdc,
-      network: name.includes('-') ? 'testnet' : 'mainnet',
+      network: info.network,
       contracts: CONTRACTS[name] || null,
     }))
 
@@ -176,7 +199,7 @@ export class CircleClient {
       domain: info.domain,
       chainId: info.chainId,
       usdc: info.usdc,
-      network: normalized.includes('-') ? 'testnet' : 'mainnet',
+      network: info.network,
       contracts: CONTRACTS[normalized] || null,
     }
   }
@@ -245,30 +268,41 @@ export class CircleClient {
       )
     }
 
-    // Fetch Circle's RSA public key
-    const keyData = await this.platformRequest('GET', '/v1/w3s/config/entity/publicKey')
-    const pem = keyData.data?.publicKey
-    if (!pem) {
-      throw new CircleError('Failed to fetch Circle public key', { code: 'PUBLIC_KEY_ERROR' })
+    if (!/^[0-9a-f]{64}$/i.test(this.entitySecret)) {
+      throw new CircleError('entity-secret must be a 32-byte hex string (64 characters)', {
+        code: 'INVALID_ENTITY_SECRET',
+      })
     }
 
-    // Import RSA public key
-    const pemBody = pem
-      .replace('-----BEGIN PUBLIC KEY-----', '')
-      .replace('-----END PUBLIC KEY-----', '')
-      .replace(/\s/g, '')
-    const binaryDer = Buffer.from(pemBody, 'base64')
-    const publicKey = await crypto.subtle.importKey(
-      'spki',
-      binaryDer,
-      { name: 'RSA-OAEP', hash: 'SHA-256' },
-      false,
-      ['encrypt'],
-    )
+    // Fetch and cache Circle's RSA public key
+    if (!this.cachedPublicKey) {
+      const keyData = await this.platformRequest('GET', '/v1/w3s/config/entity/publicKey')
+      const pem = keyData.data?.publicKey
+      if (!pem) {
+        throw new CircleError('Failed to fetch Circle public key', { code: 'PUBLIC_KEY_ERROR' })
+      }
+
+      const pemBody = pem
+        .replace('-----BEGIN PUBLIC KEY-----', '')
+        .replace('-----END PUBLIC KEY-----', '')
+        .replace(/\s/g, '')
+      const binaryDer = Buffer.from(pemBody, 'base64')
+      this.cachedPublicKey = await crypto.subtle.importKey(
+        'spki',
+        binaryDer,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        false,
+        ['encrypt'],
+      )
+    }
 
     // Encrypt the entity secret
     const secretBytes = Buffer.from(this.entitySecret, 'hex')
-    const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, secretBytes)
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'RSA-OAEP' },
+      this.cachedPublicKey,
+      secretBytes,
+    )
 
     return Buffer.from(encrypted).toString('base64')
   }
@@ -343,7 +377,10 @@ export class CircleClient {
     this.requireApiKey()
     if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
 
-    const data = await this.platformRequest('GET', `/v1/w3s/wallets/${walletId}`)
+    const data = await this.platformRequest(
+      'GET',
+      `/v1/w3s/wallets/${encodeURIComponent(walletId)}`,
+    )
     return data.data?.wallet || data
   }
 
@@ -379,7 +416,10 @@ export class CircleClient {
     this.requireApiKey()
     if (!walletId) throw new CircleError('wallet-id is required', { code: 'MISSING_WALLET_ID' })
 
-    const data = await this.platformRequest('GET', `/v1/w3s/wallets/${walletId}/balances`)
+    const data = await this.platformRequest(
+      'GET',
+      `/v1/w3s/wallets/${encodeURIComponent(walletId)}/balances`,
+    )
     return data.data?.tokenBalances || data
   }
 
@@ -434,7 +474,10 @@ export class CircleClient {
     if (!transactionId)
       throw new CircleError('transaction-id is required', { code: 'MISSING_TRANSACTION_ID' })
 
-    const data = await this.platformRequest('GET', `/v1/w3s/transactions/${transactionId}`)
+    const data = await this.platformRequest(
+      'GET',
+      `/v1/w3s/transactions/${encodeURIComponent(transactionId)}`,
+    )
     return data.data?.transaction || data
   }
 
@@ -471,9 +514,13 @@ export class CircleClient {
    * @param {string} address - Blockchain address to screen
    * @returns {object} Screening result with risk indicators
    */
-  async screenAddress(address, { chain = 'ETH-SEPOLIA' } = {}) {
+  async screenAddress(address, { chain } = {}) {
     this.requireApiKey()
     if (!address) throw new CircleError('address is required', { code: 'MISSING_ADDRESS' })
+    if (!chain)
+      throw new CircleError('blockchain is required for compliance screening', {
+        code: 'MISSING_CHAIN',
+      })
 
     const data = await this.platformRequest('POST', '/v1/w3s/compliance/screening/addresses', {
       idempotencyKey: crypto.randomUUID(),
