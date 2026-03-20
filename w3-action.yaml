@@ -72,6 +72,18 @@ commands:
         type: object
         description: '{name, domain, chainId, usdc, network, contracts}'
 
+  # -- Setup (Platform API, requires api-key + entity-secret) -------------------
+
+  - name: register-entity-secret
+    description: >
+      One-time setup. Registers your entity secret with Circle so wallet
+      creation and transaction signing work. Returns a recovery file.
+    inputs: {}
+    outputs:
+      result:
+        type: object
+        description: '{recoveryFile}'
+
   # -- Wallets (Platform API, requires api-key) --------------------------------
 
   - name: create-wallet-set
