@@ -54,7 +54,7 @@ function resolveRpcUrl(chain, inputRpcUrl) {
 
   // Public defaults for testnets (rate-limited, fine for testing)
   const defaults = {
-    'ethereum-sepolia': 'https://rpc.sepolia.org',
+    'ethereum-sepolia': 'https://ethereum-sepolia-rpc.publicnode.com',
     'avalanche-fuji': 'https://api.avax-test.network/ext/bc/C/rpc',
     'arbitrum-sepolia': 'https://sepolia-rollup.arbitrum.io/rpc',
     'base-sepolia': 'https://sepolia.base.org',
