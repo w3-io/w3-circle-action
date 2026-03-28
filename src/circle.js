@@ -97,6 +97,9 @@ const CONTRACTS = {
   },
 }
 
+// Exported for use by cctp-onchain.js
+export { DOMAINS, CONTRACTS }
+
 export class CircleError extends Error {
   constructor(message, { status, body, code } = {}) {
     super(message)
