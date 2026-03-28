@@ -139,19 +139,10 @@ export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, 
     )
   }
 
-  // Check existing allowance — skip approve if already sufficient
-  const currentAllowance = await usdc.allowance(signer.address, chainContracts.tokenMessenger)
-  if (currentAllowance >= parsedAmount) {
-    return {
-      txHash: null,
-      spender: chainContracts.tokenMessenger,
-      amount: amount,
-      allowance: ethers.formatUnits(currentAllowance, decimals),
-      skipped: true,
-      message: 'Sufficient allowance already exists',
-    }
-  }
-
+  // Always approve — don't skip even if allowance looks sufficient.
+  // In a multi-validator environment, different validators execute
+  // approve and burn steps. A stale allowance check can cause the
+  // burn to revert if the allowance was consumed by a prior run.
   const tx = await usdc.approve(chainContracts.tokenMessenger, parsedAmount)
   const receipt = await tx.wait()
 
