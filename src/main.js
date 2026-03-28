@@ -1,5 +1,6 @@
 import * as core from '@actions/core'
-import { CircleClient, CircleError } from './circle.js'
+import { CircleClient, CircleError, DOMAINS, CONTRACTS } from './circle.js'
+import { approveBurn, burn, mint } from './cctp-onchain.js'
 
 const COMMANDS = {
   // CCTP (IRIS API — no auth)
@@ -7,6 +8,10 @@ const COMMANDS = {
   'wait-for-attestation': runWaitForAttestation,
   'get-supported-chains': runGetSupportedChains,
   'get-domain-info': runGetDomainInfo,
+  // CCTP on-chain (requires private-key + RPC)
+  'approve-burn': runApproveBurn,
+  burn: runBurn,
+  mint: runMint,
   // Setup (Platform API — requires api-key + entity-secret)
   'register-entity-secret': runRegisterEntitySecret,
   // Wallets (Platform API — requires api-key)
@@ -82,6 +87,44 @@ async function runGetSupportedChains(client) {
 async function runGetDomainInfo(client) {
   const chain = core.getInput('chain', { required: true })
   return client.getDomainInfo(chain)
+}
+
+// -- CCTP on-chain commands --------------------------------------------------
+
+async function runApproveBurn() {
+  const chain = core.getInput('chain', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  const privateKey = core.getInput('private-key', { required: true })
+  const rpcUrl = core.getInput('rpc-url') || undefined
+  return approveBurn({ chain, amount, privateKey, rpcUrl, domains: DOMAINS, contracts: CONTRACTS })
+}
+
+async function runBurn() {
+  const chain = core.getInput('chain', { required: true })
+  const destinationChain = core.getInput('destination-chain', { required: true })
+  const recipient = core.getInput('destination-address', { required: true })
+  const amount = core.getInput('amount', { required: true })
+  const privateKey = core.getInput('private-key', { required: true })
+  const rpcUrl = core.getInput('rpc-url') || undefined
+  return burn({
+    chain,
+    destinationChain,
+    recipient,
+    amount,
+    privateKey,
+    rpcUrl,
+    domains: DOMAINS,
+    contracts: CONTRACTS,
+  })
+}
+
+async function runMint() {
+  const chain = core.getInput('chain', { required: true })
+  const messageBytes = core.getInput('message-bytes', { required: true })
+  const attestation = core.getInput('attestation', { required: true })
+  const privateKey = core.getInput('private-key', { required: true })
+  const rpcUrl = core.getInput('rpc-url') || undefined
+  return mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts: CONTRACTS })
 }
 
 // -- Platform API: Setup ----------------------------------------------------
