@@ -28,7 +28,7 @@ jobs:
       - name: Wait for attestation
         id: attest
         uses: w3-io/w3-circle-action@v0
-        timeout-minutes: 15
+        timeout-minutes: 25
         with:
           command: wait-for-attestation
           message-hash: ${{ fromJSON(steps.burn.outputs.result).messageHash }}
