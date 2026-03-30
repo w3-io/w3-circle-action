@@ -94,9 +94,8 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = core.getInput('chain', { required: true })
   const amount = core.getInput('amount', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
-  return approveBurn({ chain, amount, privateKey, rpcUrl, domains: DOMAINS, contracts: CONTRACTS })
+  const senderAddress = core.getInput('sender-address') || undefined
+  return approveBurn({ chain, amount, senderAddress, domains: DOMAINS, contracts: CONTRACTS })
 }
 
 async function runBurn() {
@@ -104,15 +103,11 @@ async function runBurn() {
   const destinationChain = core.getInput('destination-chain', { required: true })
   const recipient = core.getInput('destination-address', { required: true })
   const amount = core.getInput('amount', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
   return burn({
     chain,
     destinationChain,
     recipient,
     amount,
-    privateKey,
-    rpcUrl,
     domains: DOMAINS,
     contracts: CONTRACTS,
   })
@@ -122,9 +117,7 @@ async function runMint() {
   const chain = core.getInput('chain', { required: true })
   const messageBytes = core.getInput('message-bytes', { required: true })
   const attestation = core.getInput('attestation', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
-  return mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts: CONTRACTS })
+  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS })
 }
 
 // -- Platform API: Setup ----------------------------------------------------

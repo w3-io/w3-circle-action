@@ -1,0 +1,52 @@
+name: cctp-cross-chain-transfer-bridge
+on: workflow_dispatch
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    environment: "0x892e4bbe33281932fee226828545da9128de2f498144c32b95cba70e31449267"
+    steps:
+      - name: Approve USDC spend
+        uses: w3-io/w3-circle-action@v0
+        bridge-allow:
+          - ethereum/call-contract
+          - ethereum/read-contract
+        with:
+          command: approve-burn
+          chain: ethereum-sepolia
+          amount: "0.01"
+
+      - name: Burn USDC on Sepolia
+        id: burn
+        uses: w3-io/w3-circle-action@v0
+        bridge-allow:
+          - ethereum/call-contract
+          - ethereum/read-contract
+          - crypto/keccak256
+        with:
+          command: burn
+          chain: ethereum-sepolia
+          destination-chain: avalanche-fuji
+          destination-address: ${{ secrets.CCTP_RECIPIENT }}
+          amount: "0.01"
+
+      - name: Wait for attestation
+        id: attest
+        uses: w3-io/w3-circle-action@v0
+        timeout-minutes: 25
+        with:
+          command: wait-for-attestation
+          message-hash: ${{ fromJSON(steps.burn.outputs.result).messageHash }}
+          sandbox: "true"
+          poll-interval: "15"
+          max-attempts: "80"
+
+      - name: Mint USDC on Fuji
+        uses: w3-io/w3-circle-action@v0
+        bridge-allow:
+          - ethereum/call-contract
+        with:
+          command: mint
+          chain: avalanche-fuji
+          message-bytes: ${{ fromJSON(steps.burn.outputs.result).messageBytes }}
+          attestation: ${{ fromJSON(steps.attest.outputs.result).attestation }}

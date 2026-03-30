@@ -1,10 +1,12 @@
 /**
  * CCTP on-chain operations: approve, burn, and mint.
  *
- * Uses ethers.js to interact with CCTP smart contracts directly.
- * This enables W3 workflows to perform cross-chain USDC transfers
- * without relying on Circle's Platform API — just a wallet private
- * key and RPC endpoints.
+ * Uses the W3 bridge SDK to interact with CCTP smart contracts via
+ * the protocol's native chain operations. No ethers.js dependency —
+ * the bridge handles RPC connections, ABI encoding, and signing.
+ *
+ * Signing keys are held by the bridge via W3_SECRET_* and never
+ * enter the container.
  *
  * Flow:
  *   1. approve-burn: Approve TokenMessenger to spend USDC
@@ -13,79 +15,8 @@
  *   4. mint: Call receiveMessage on destination chain → USDC minted
  */
 
-import { ethers } from 'ethers'
+import { w3 } from './bridge.js'
 import { CircleError } from './circle.js'
-
-// CCTP V1 ABIs (minimal — only the functions we call)
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) external returns (bool)',
-  'function allowance(address owner, address spender) external view returns (uint256)',
-  'function balanceOf(address account) external view returns (uint256)',
-  'function decimals() external view returns (uint8)',
-]
-
-const TOKEN_MESSENGER_ABI = [
-  'function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken) external returns (uint64 nonce)',
-  'event DepositForBurn(uint64 indexed nonce, address indexed burnToken, uint256 amount, address indexed depositor, bytes32 mintRecipient, uint32 destinationDomain, bytes32 destinationTokenMessenger, bytes32 destinationCaller)',
-]
-
-const MESSAGE_TRANSMITTER_ABI = [
-  'function receiveMessage(bytes message, bytes attestation) external returns (bool success)',
-  'event MessageSent(bytes message)',
-  'event MessageReceived(address indexed caller, uint32 sourceDomain, uint64 indexed nonce, bytes32 sender, bytes messageBody)',
-]
-
-/**
- * Resolve an RPC URL for a chain.
- *
- * Checks for chain-specific env vars first (e.g., ETHEREUM_SEPOLIA_RPC_URL),
- * then falls back to a generic RPC_URL input, then to public defaults.
- *
- * @param {string} chain - Chain name (e.g., "ethereum-sepolia")
- * @returns {string} RPC URL
- */
-function resolveRpcUrl(chain, inputRpcUrl) {
-  // Check chain-specific env var: ETHEREUM_SEPOLIA_RPC_URL
-  const envKey = chain.toUpperCase().replace(/-/g, '_') + '_RPC_URL'
-  if (process.env[envKey]) return process.env[envKey]
-
-  // Check generic input
-  if (inputRpcUrl) return inputRpcUrl
-
-  // Public defaults for testnets (rate-limited, fine for testing)
-  const defaults = {
-    'ethereum-sepolia': 'https://ethereum-sepolia-rpc.publicnode.com',
-    'avalanche-fuji': 'https://api.avax-test.network/ext/bc/C/rpc',
-    'arbitrum-sepolia': 'https://sepolia-rollup.arbitrum.io/rpc',
-    'base-sepolia': 'https://sepolia.base.org',
-    'polygon-amoy': 'https://rpc-amoy.polygon.technology',
-  }
-
-  if (defaults[chain]) return defaults[chain]
-
-  throw new CircleError(
-    `No RPC URL for "${chain}". Set ${envKey} env var or provide rpc-url input.`,
-    { code: 'MISSING_RPC_URL' },
-  )
-}
-
-/**
- * Create a signer from a private key and RPC URL.
- *
- * @param {string} privateKey - 0x-prefixed private key
- * @param {string} rpcUrl - JSON-RPC endpoint
- * @returns {ethers.Wallet} Connected wallet
- */
-function createSigner(privateKey, rpcUrl) {
-  if (!privateKey) {
-    throw new CircleError('private-key is required for on-chain CCTP commands', {
-      code: 'MISSING_PRIVATE_KEY',
-    })
-  }
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl)
-  return new ethers.Wallet(privateKey, provider)
-}
 
 /**
  * Pad an Ethereum address to bytes32 for CCTP.
@@ -94,25 +25,63 @@ function createSigner(privateKey, rpcUrl) {
  * left-padded with 12 zero bytes.
  *
  * @param {string} address - 0x-prefixed Ethereum address
- * @returns {string} bytes32 representation
+ * @returns {string} bytes32 representation (0x + 64 hex chars)
  */
 function addressToBytes32(address) {
-  return ethers.zeroPadValue(address, 32)
+  const stripped = address.replace(/^0x/, '').toLowerCase()
+  return '0x' + stripped.padStart(64, '0')
+}
+
+/**
+ * Parse a human-readable USDC amount into its smallest unit.
+ *
+ * @param {string} amount - e.g., "10.5"
+ * @param {number} decimals - token decimals (typically 6 for USDC)
+ * @returns {string} amount in smallest unit as a decimal string
+ */
+function parseUnits(amount, decimals) {
+  const [whole, frac = ''] = amount.split('.')
+  const padded = frac.padEnd(decimals, '0').slice(0, decimals)
+  return BigInt(whole + padded).toString()
+}
+
+/**
+ * Format smallest-unit amount to human-readable.
+ *
+ * @param {string} raw - amount in smallest unit
+ * @param {number} decimals - token decimals
+ * @returns {string} human-readable amount
+ */
+function formatUnits(raw, decimals) {
+  const str = raw.padStart(decimals + 1, '0')
+  const whole = str.slice(0, str.length - decimals) || '0'
+  const frac = str.slice(str.length - decimals)
+  return frac ? `${whole}.${frac.replace(/0+$/, '')}` : whole
+}
+
+/**
+ * Find a log entry matching an event topic signature.
+ *
+ * @param {Array} logs - Parsed log entries from bridge response
+ * @param {string} topicHash - The keccak256 of the event signature
+ * @returns {object|null} The matching log entry, or null
+ */
+function findLog(logs, topicHash) {
+  return logs.find((log) => log.topics && log.topics[0] === topicHash) || null
 }
 
 /**
  * Approve TokenMessenger to spend USDC.
  *
  * @param {object} options
- * @param {string} options.chain - Source chain name
+ * @param {string} options.chain - Source chain name (e.g., "ethereum-sepolia")
  * @param {string} options.amount - USDC amount (human-readable, e.g., "10.5")
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
+ * @param {string} [options.senderAddress] - Sender address for balance check (optional)
  * @param {object} options.domains - DOMAINS from circle.js
  * @param {object} options.contracts - CONTRACTS from circle.js
- * @returns {{ txHash, spender, amount, allowance }}
+ * @returns {{ txHash, spender, amount, chain, blockNumber }}
  */
-export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, contracts }) {
+export async function approveBurn({ chain, amount, senderAddress, domains, contracts }) {
   const chainInfo = domains[chain]
   if (!chainInfo) throw new CircleError(`Unknown chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
 
@@ -123,39 +92,50 @@ export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, 
     })
   }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
+  // Read token decimals
+  const decimalsResult = await w3.ethereum.readContract({
+    network: chain,
+    contract: chainInfo.usdc,
+    method: 'decimals()',
+  })
+  const decimals = Number(decimalsResult.result)
+  const parsedAmount = parseUnits(amount, decimals)
 
-  const usdc = new ethers.Contract(chainInfo.usdc, ERC20_ABI, signer)
-  const decimals = await usdc.decimals()
-  const parsedAmount = ethers.parseUnits(amount, decimals)
-
-  // Check current balance
-  const balance = await usdc.balanceOf(signer.address)
-  if (balance < parsedAmount) {
-    throw new CircleError(
-      `Insufficient USDC balance: have ${ethers.formatUnits(balance, decimals)}, need ${amount}`,
-      { code: 'INSUFFICIENT_BALANCE' },
-    )
+  // Check current balance (if sender address is known)
+  if (senderAddress) {
+    const balanceResult = await w3.ethereum.readContract({
+      network: chain,
+      contract: chainInfo.usdc,
+      method: 'balanceOf(address)',
+      args: [senderAddress],
+    })
+    const balance = BigInt(balanceResult.result)
+    if (balance < BigInt(parsedAmount)) {
+      throw new CircleError(
+        `Insufficient USDC balance: have ${formatUnits(balance.toString(), decimals)}, need ${amount}`,
+        { code: 'INSUFFICIENT_BALANCE' },
+      )
+    }
   }
 
   // Always approve — don't skip even if allowance looks sufficient.
   // In a multi-validator environment, different validators execute
   // approve and burn steps. A stale allowance check can cause the
   // burn to revert if the allowance was consumed by a prior run.
-  const tx = await usdc.approve(chainContracts.tokenMessenger, parsedAmount)
-  const receipt = await tx.wait()
-
-  const newAllowance = await usdc.allowance(signer.address, chainContracts.tokenMessenger)
+  const result = await w3.ethereum.callContract({
+    network: chain,
+    contract: chainInfo.usdc,
+    method: 'approve(address,uint256)',
+    args: [chainContracts.tokenMessenger, parsedAmount],
+  })
 
   return {
-    txHash: receipt.hash,
+    txHash: result.txHash,
     spender: chainContracts.tokenMessenger,
-    amount: amount,
-    allowance: ethers.formatUnits(newAllowance, decimals),
+    amount,
     skipped: false,
     chain,
-    blockNumber: receipt.blockNumber,
+    blockNumber: result.blockNumber,
   }
 }
 
@@ -170,22 +150,11 @@ export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, 
  * @param {string} options.destinationChain - Destination chain name
  * @param {string} options.recipient - Recipient address on destination chain
  * @param {string} options.amount - USDC amount (human-readable)
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
  * @param {object} options.domains - DOMAINS from circle.js
  * @param {object} options.contracts - CONTRACTS from circle.js
  * @returns {{ txHash, messageBytes, messageHash, nonce, amount, source, destination }}
  */
-export async function burn({
-  chain,
-  destinationChain,
-  recipient,
-  amount,
-  privateKey,
-  rpcUrl,
-  domains,
-  contracts,
-}) {
+export async function burn({ chain, destinationChain, recipient, amount, domains, contracts }) {
   const sourceInfo = domains[chain]
   const destInfo = domains[destinationChain]
   if (!sourceInfo)
@@ -207,91 +176,66 @@ export async function burn({
     throw new CircleError('recipient address is required', { code: 'MISSING_RECIPIENT' })
   }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
-
   // Parse amount
-  const usdc = new ethers.Contract(sourceInfo.usdc, ERC20_ABI, signer)
-  const decimals = await usdc.decimals()
-  const parsedAmount = ethers.parseUnits(amount, decimals)
-
-  // Call depositForBurn
-  const tokenMessenger = new ethers.Contract(
-    chainContracts.tokenMessenger,
-    TOKEN_MESSENGER_ABI,
-    signer,
-  )
+  const decimalsResult = await w3.ethereum.readContract({
+    network: chain,
+    contract: sourceInfo.usdc,
+    method: 'decimals()',
+  })
+  const decimals = Number(decimalsResult.result)
+  const parsedAmount = parseUnits(amount, decimals)
 
   const mintRecipient = addressToBytes32(recipient)
 
-  const tx = await tokenMessenger.depositForBurn(
-    parsedAmount,
-    destInfo.domain,
-    mintRecipient,
-    sourceInfo.usdc,
-  )
+  // Call depositForBurn
+  const result = await w3.ethereum.callContract({
+    network: chain,
+    contract: chainContracts.tokenMessenger,
+    method: 'depositForBurn(uint256,uint32,bytes32,address)',
+    args: [parsedAmount, String(destInfo.domain), mintRecipient, sourceInfo.usdc],
+  })
 
-  const receipt = await tx.wait()
+  // Parse logs from the receipt to find MessageSent and DepositForBurn events
+  const logs = JSON.parse(result.logs || '[]')
 
-  // Extract MessageSent event to get messageBytes
-  const messageTransmitter = new ethers.Contract(
-    chainContracts.messageTransmitter,
-    MESSAGE_TRANSMITTER_ABI,
-    signer,
-  )
+  // MessageSent topic: keccak256("MessageSent(bytes)")
+  const messageSentTopic = (await w3.crypto.keccak256({ data: toHex('MessageSent(bytes)') })).hash
 
-  let messageBytes = null
-  for (const log of receipt.logs) {
-    try {
-      const parsed = messageTransmitter.interface.parseLog({
-        topics: log.topics,
-        data: log.data,
-      })
-      if (parsed && parsed.name === 'MessageSent') {
-        messageBytes = parsed.args.message
-        break
-      }
-    } catch {
-      // Not a MessageSent event from this contract
-    }
-  }
-
-  if (!messageBytes) {
+  const messageSentLog = findLog(logs, messageSentTopic)
+  if (!messageSentLog) {
     throw new CircleError('MessageSent event not found in transaction receipt', {
       code: 'EVENT_NOT_FOUND',
     })
   }
 
-  // Compute messageHash (keccak256 of messageBytes)
-  const messageHash = ethers.keccak256(messageBytes)
+  // MessageSent(bytes message) — the message is ABI-encoded in the data field.
+  // ABI encoding for a single dynamic bytes: offset (32 bytes) + length (32 bytes) + data.
+  const messageData = messageSentLog.data
+  const messageBytes = decodeAbiBytes(messageData)
 
-  // Extract nonce from DepositForBurn event
-  let nonce = null
-  for (const log of receipt.logs) {
-    try {
-      const parsed = tokenMessenger.interface.parseLog({
-        topics: log.topics,
-        data: log.data,
-      })
-      if (parsed && parsed.name === 'DepositForBurn') {
-        nonce = parsed.args.nonce.toString()
-        break
-      }
-    } catch {
-      // Not our event
-    }
-  }
+  // Compute messageHash (keccak256 of messageBytes)
+  const messageHashResult = await w3.crypto.keccak256({ data: messageBytes })
+  const messageHash = messageHashResult.hash
+
+  // DepositForBurn topic: keccak256("DepositForBurn(uint64,address,uint256,address,bytes32,uint32,bytes32,bytes32)")
+  const depositForBurnSig =
+    'DepositForBurn(uint64,address,uint256,address,bytes32,uint32,bytes32,bytes32)'
+  const depositForBurnTopic = (await w3.crypto.keccak256({ data: toHex(depositForBurnSig) })).hash
+
+  const depositLog = findLog(logs, depositForBurnTopic)
+  // Nonce is the first indexed parameter (topics[1])
+  const nonce = depositLog ? String(BigInt(depositLog.topics[1])) : null
 
   return {
-    txHash: receipt.hash,
-    messageBytes: messageBytes,
-    messageHash: messageHash,
+    txHash: result.txHash,
+    messageBytes,
+    messageHash,
     nonce,
     amount,
     source: chain,
     destination: destinationChain,
     recipient,
-    blockNumber: receipt.blockNumber,
+    blockNumber: result.blockNumber,
   }
 }
 
@@ -305,12 +249,10 @@ export async function burn({
  * @param {string} options.chain - Destination chain name
  * @param {string} options.messageBytes - Message bytes from burn step
  * @param {string} options.attestation - Attestation from IRIS API
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
  * @param {object} options.contracts - CONTRACTS from circle.js
  * @returns {{ txHash, chain, blockNumber, success }}
  */
-export async function mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts }) {
+export async function mint({ chain, messageBytes, attestation, contracts }) {
   const chainContracts = contracts[chain]
   if (!chainContracts) {
     throw new CircleError(`No CCTP contracts configured for ${chain}`, {
@@ -329,22 +271,49 @@ export async function mint({ chain, messageBytes, attestation, privateKey, rpcUr
     })
   }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
-
-  const messageTransmitter = new ethers.Contract(
-    chainContracts.messageTransmitter,
-    MESSAGE_TRANSMITTER_ABI,
-    signer,
-  )
-
-  const tx = await messageTransmitter.receiveMessage(messageBytes, attestation)
-  const receipt = await tx.wait()
+  const result = await w3.ethereum.callContract({
+    network: chain,
+    contract: chainContracts.messageTransmitter,
+    method: 'receiveMessage(bytes,bytes)',
+    args: [messageBytes, attestation],
+  })
 
   return {
-    txHash: receipt.hash,
+    txHash: result.txHash,
     chain,
-    blockNumber: receipt.blockNumber,
-    success: receipt.status === 1,
+    blockNumber: result.blockNumber,
+    success: result.status === 'success',
   }
+}
+
+// ── Utilities ──────────────────────────────────────────────────────
+
+/**
+ * Convert a UTF-8 string to 0x-prefixed hex.
+ * @param {string} str
+ * @returns {string}
+ */
+function toHex(str) {
+  return '0x' + Buffer.from(str, 'utf8').toString('hex')
+}
+
+/**
+ * Decode ABI-encoded dynamic bytes from a log data field.
+ *
+ * ABI encoding for a single `bytes` parameter:
+ *   - 32 bytes: offset to data
+ *   - 32 bytes: length of data
+ *   - N bytes: the actual data (padded to 32-byte boundary)
+ *
+ * @param {string} data - 0x-prefixed hex string
+ * @returns {string} 0x-prefixed hex of the decoded bytes
+ */
+function decodeAbiBytes(data) {
+  const hex = data.replace(/^0x/, '')
+  // Read offset (first 32 bytes = 64 hex chars)
+  const offset = parseInt(hex.slice(0, 64), 16) * 2
+  // Read length at offset
+  const length = parseInt(hex.slice(offset, offset + 64), 16) * 2
+  // Read data after length
+  return '0x' + hex.slice(offset + 64, offset + 64 + length)
 }
