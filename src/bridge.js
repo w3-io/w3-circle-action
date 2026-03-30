@@ -46,7 +46,11 @@ function coerceValues(obj) {
 }
 
 function createBridge(socketPath) {
-  const socket = socketPath || process.env.W3_BRIDGE_SOCKET || DEFAULT_SOCKET
+  // Support both Unix socket and TCP connections.
+  // W3_BRIDGE_URL (TCP) takes precedence when set — used by Docker-in-Docker.
+  // W3_BRIDGE_SOCKET (Unix) is the default for bare-metal nodes.
+  const bridgeUrl = process.env.W3_BRIDGE_URL
+  const socket = !bridgeUrl ? (socketPath || process.env.W3_BRIDGE_SOCKET || DEFAULT_SOCKET) : null
 
   async function call(method, path, body) {
     return new Promise((resolve, reject) => {
@@ -54,8 +58,12 @@ function createBridge(socketPath) {
       const headers = { 'Content-Type': 'application/json' }
       if (data) headers['Content-Length'] = Buffer.byteLength(data)
 
+      const connectOpts = socket
+        ? { socketPath: socket, method, path, headers }
+        : { ...new URL(path, bridgeUrl), method, headers }
+
       const req = http.request(
-        { socketPath: socket, method, path, headers },
+        connectOpts,
         (res) => {
           let chunks = []
           res.on('data', (chunk) => chunks.push(chunk))

@@ -4,10 +4,9 @@ on: workflow_dispatch
 jobs:
   transfer:
     runs-on: ubuntu-latest
-    environment: "0x892e4bbe33281932fee226828545da9128de2f498144c32b95cba70e31449267"
     steps:
       - name: Approve USDC spend
-        uses: w3-io/w3-circle-action@v0
+        uses: w3-io/w3-circle-action@audie/cctp-phase2
         bridge-allow:
           - ethereum/call-contract
           - ethereum/read-contract
@@ -18,7 +17,7 @@ jobs:
 
       - name: Burn USDC on Sepolia
         id: burn
-        uses: w3-io/w3-circle-action@v0
+        uses: w3-io/w3-circle-action@audie/cctp-phase2
         bridge-allow:
           - ethereum/call-contract
           - ethereum/read-contract
@@ -32,7 +31,7 @@ jobs:
 
       - name: Wait for attestation
         id: attest
-        uses: w3-io/w3-circle-action@v0
+        uses: w3-io/w3-circle-action@audie/cctp-phase2
         timeout-minutes: 25
         with:
           command: wait-for-attestation
@@ -42,7 +41,7 @@ jobs:
           max-attempts: "80"
 
       - name: Mint USDC on Fuji
-        uses: w3-io/w3-circle-action@v0
+        uses: w3-io/w3-circle-action@audie/cctp-phase2
         bridge-allow:
           - ethereum/call-contract
         with:
