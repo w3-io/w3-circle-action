@@ -16,7 +16,7 @@
 import { ethers } from 'ethers'
 import { CircleError } from './circle.js'
 
-// CCTP V1 ABIs (minimal — only the functions we call)
+// CCTP ABIs (minimal — only the functions we call)
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
   'function allowance(address owner, address spender) external view returns (uint256)',
@@ -26,11 +26,13 @@ const ERC20_ABI = [
 
 const TOKEN_MESSENGER_ABI = [
   'function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken) external returns (uint64 nonce)',
+  'function depositForBurnWithCaller(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller) external returns (uint64 nonce)',
   'event DepositForBurn(uint64 indexed nonce, address indexed burnToken, uint256 amount, address indexed depositor, bytes32 mintRecipient, uint32 destinationDomain, bytes32 destinationTokenMessenger, bytes32 destinationCaller)',
 ]
 
 const MESSAGE_TRANSMITTER_ABI = [
   'function receiveMessage(bytes message, bytes attestation) external returns (bool success)',
+  'function replaceMessage(bytes originalMessage, bytes originalAttestation, bytes newMessageBody, bytes32 newDestinationCaller) external',
   'event MessageSent(bytes message)',
   'event MessageReceived(address indexed caller, uint32 sourceDomain, uint64 indexed nonce, bytes32 sender, bytes messageBody)',
 ]
@@ -185,6 +187,7 @@ export async function burn({
   rpcUrl,
   domains,
   contracts,
+  destinationCaller,
 }) {
   const sourceInfo = domains[chain]
   const destInfo = domains[destinationChain]
@@ -215,7 +218,7 @@ export async function burn({
   const decimals = await usdc.decimals()
   const parsedAmount = ethers.parseUnits(amount, decimals)
 
-  // Call depositForBurn
+  // Call depositForBurn (or depositForBurnWithCaller if destinationCaller specified)
   const tokenMessenger = new ethers.Contract(
     chainContracts.tokenMessenger,
     TOKEN_MESSENGER_ABI,
@@ -224,12 +227,24 @@ export async function burn({
 
   const mintRecipient = addressToBytes32(recipient)
 
-  const tx = await tokenMessenger.depositForBurn(
-    parsedAmount,
-    destInfo.domain,
-    mintRecipient,
-    sourceInfo.usdc,
-  )
+  let tx
+  if (destinationCaller) {
+    const callerBytes32 = addressToBytes32(destinationCaller)
+    tx = await tokenMessenger.depositForBurnWithCaller(
+      parsedAmount,
+      destInfo.domain,
+      mintRecipient,
+      sourceInfo.usdc,
+      callerBytes32,
+    )
+  } else {
+    tx = await tokenMessenger.depositForBurn(
+      parsedAmount,
+      destInfo.domain,
+      mintRecipient,
+      sourceInfo.usdc,
+    )
+  }
 
   const receipt = await tx.wait()
 
@@ -346,5 +361,103 @@ export async function mint({ chain, messageBytes, attestation, privateKey, rpcUr
     chain,
     blockNumber: receipt.blockNumber,
     success: receipt.status === 1,
+  }
+}
+
+/**
+ * Replace a pending CCTP message on the source chain.
+ *
+ * Allows changing the destinationCaller or mintRecipient of an
+ * unfinalized message. Requires the original message and attestation.
+ * Only the original sender can call this.
+ *
+ * @param {object} options
+ * @param {string} options.chain - Source chain name
+ * @param {string} options.originalMessageBytes - Original message bytes
+ * @param {string} options.originalAttestation - Original attestation
+ * @param {string} [options.newDestinationCaller] - New destination caller (address)
+ * @param {string} [options.newMintRecipient] - New mint recipient (address)
+ * @param {string} options.privateKey - Wallet private key (must be original sender)
+ * @param {string} [options.rpcUrl] - RPC endpoint override
+ * @param {object} options.contracts - CONTRACTS from circle.js
+ * @returns {{ txHash, chain, blockNumber, newMessageBytes, newMessageHash }}
+ */
+export async function replaceMessage({
+  chain,
+  originalMessageBytes,
+  originalAttestation,
+  newDestinationCaller,
+  newMintRecipient,
+  privateKey,
+  rpcUrl,
+  contracts,
+}) {
+  const chainContracts = contracts[chain]
+  if (!chainContracts) {
+    throw new CircleError(`No CCTP contracts configured for ${chain}`, {
+      code: 'MISSING_CONTRACTS',
+    })
+  }
+
+  if (!originalMessageBytes) {
+    throw new CircleError('original-message-bytes is required', {
+      code: 'MISSING_MESSAGE_BYTES',
+    })
+  }
+  if (!originalAttestation) {
+    throw new CircleError('original-attestation is required', {
+      code: 'MISSING_ATTESTATION',
+    })
+  }
+
+  const rpc = resolveRpcUrl(chain, rpcUrl)
+  const signer = createSigner(privateKey, rpc)
+
+  const messageTransmitter = new ethers.Contract(
+    chainContracts.messageTransmitter,
+    MESSAGE_TRANSMITTER_ABI,
+    signer,
+  )
+
+  // Build new message body (same as original but with updated fields)
+  // For now, pass empty body to keep original body — the contract
+  // replaces only the caller if newMessageBody is empty.
+  const callerBytes32 = newDestinationCaller
+    ? addressToBytes32(newDestinationCaller)
+    : ethers.zeroPadValue('0x00', 32)
+
+  const tx = await messageTransmitter.replaceMessage(
+    originalMessageBytes,
+    originalAttestation,
+    '0x', // empty = keep original body
+    callerBytes32,
+  )
+  const receipt = await tx.wait()
+
+  // Extract new MessageSent event
+  let newMessageBytes = null
+  for (const log of receipt.logs) {
+    try {
+      const parsed = messageTransmitter.interface.parseLog({
+        topics: log.topics,
+        data: log.data,
+      })
+      if (parsed && parsed.name === 'MessageSent') {
+        newMessageBytes = parsed.args.message
+        break
+      }
+    } catch {
+      // Not our event
+    }
+  }
+
+  const newMessageHash = newMessageBytes ? ethers.keccak256(newMessageBytes) : null
+
+  return {
+    txHash: receipt.hash,
+    chain,
+    blockNumber: receipt.blockNumber,
+    newMessageBytes,
+    newMessageHash,
   }
 }

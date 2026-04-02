@@ -59,6 +59,20 @@ const DOMAINS = {
     usdc: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
   },
 
+  // Solana
+  solana: {
+    domain: 5,
+    network: 'mainnet',
+    type: 'solana',
+    usdc: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  },
+  'solana-devnet': {
+    domain: 5,
+    network: 'testnet',
+    type: 'solana',
+    usdc: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+  },
+
   // Testnet (Sepolia / Fuji)
   'ethereum-sepolia': {
     domain: 0,
@@ -80,9 +94,35 @@ const DOMAINS = {
   },
 }
 
-// CCTP contract addresses per chain (testnet).
-// Mainnet addresses follow the same pattern but differ per deployment.
+// CCTP V2 contract addresses per chain.
+// EVM mainnet uses CREATE2 — same addresses across all chains.
 const CONTRACTS = {
+  // EVM mainnet (CREATE2 — identical addresses)
+  ethereum: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  avalanche: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  optimism: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  arbitrum: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  base: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  polygon: {
+    tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+    messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
+  },
+  // EVM testnet
   'ethereum-sepolia': {
     tokenMessenger: '0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5',
     messageTransmitter: '0x7865fafc2db2093669d92c0f33aeef291086befd',
@@ -94,6 +134,15 @@ const CONTRACTS = {
   'arbitrum-sepolia': {
     tokenMessenger: '0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5',
     messageTransmitter: '0xacf1ceef35caac005e15888ddb8a3515c41b4872',
+  },
+  // Solana CCTP V2 (same addresses on mainnet and devnet)
+  solana: {
+    tokenMessenger: 'CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe',
+    messageTransmitter: 'CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC',
+  },
+  'solana-devnet': {
+    tokenMessenger: 'CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe',
+    messageTransmitter: 'CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC',
   },
 }
 

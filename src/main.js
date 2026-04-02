@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import { CircleClient, CircleError, DOMAINS, CONTRACTS } from './circle.js'
-import { approveBurn, burn, mint } from './cctp-onchain.js'
+import { approveBurn, burn, mint, replaceMessage } from './cctp-onchain.js'
+import { mintSolana, burnSolana } from './cctp-solana.js'
 
 const COMMANDS = {
   // CCTP (IRIS API — no auth)
@@ -12,6 +13,7 @@ const COMMANDS = {
   'approve-burn': runApproveBurn,
   burn: runBurn,
   mint: runMint,
+  'replace-message': runReplaceMessage,
   // Setup (Platform API — requires api-key + entity-secret)
   'register-entity-secret': runRegisterEntitySecret,
   // Wallets (Platform API — requires api-key)
@@ -106,6 +108,24 @@ async function runBurn() {
   const amount = core.getInput('amount', { required: true })
   const privateKey = core.getInput('private-key', { required: true })
   const rpcUrl = core.getInput('rpc-url') || undefined
+  const destinationCaller = core.getInput('destination-caller') || undefined
+
+  // Route to Solana implementation for Solana source chains
+  const chainInfo = DOMAINS[chain]
+  if (chainInfo && chainInfo.type === 'solana') {
+    return burnSolana({
+      chain,
+      destinationChain,
+      recipient,
+      amount,
+      privateKey,
+      rpcUrl,
+      contracts: CONTRACTS,
+      domains: DOMAINS,
+      destinationCaller,
+    })
+  }
+
   return burn({
     chain,
     destinationChain,
@@ -115,6 +135,7 @@ async function runBurn() {
     rpcUrl,
     domains: DOMAINS,
     contracts: CONTRACTS,
+    destinationCaller,
   })
 }
 
@@ -124,7 +145,42 @@ async function runMint() {
   const attestation = core.getInput('attestation', { required: true })
   const privateKey = core.getInput('private-key', { required: true })
   const rpcUrl = core.getInput('rpc-url') || undefined
+
+  // Route to Solana implementation for Solana chains
+  const chainInfo = DOMAINS[chain]
+  if (chainInfo && chainInfo.type === 'solana') {
+    return mintSolana({
+      chain,
+      messageBytes,
+      attestation,
+      privateKey,
+      rpcUrl,
+      contracts: CONTRACTS,
+      domains: DOMAINS,
+    })
+  }
+
   return mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts: CONTRACTS })
+}
+
+async function runReplaceMessage() {
+  const chain = core.getInput('chain', { required: true })
+  const originalMessageBytes = core.getInput('original-message-bytes', { required: true })
+  const originalAttestation = core.getInput('original-attestation', { required: true })
+  const newDestinationCaller = core.getInput('destination-caller') || undefined
+  const newMintRecipient = core.getInput('destination-address') || undefined
+  const privateKey = core.getInput('private-key', { required: true })
+  const rpcUrl = core.getInput('rpc-url') || undefined
+  return replaceMessage({
+    chain,
+    originalMessageBytes,
+    originalAttestation,
+    newDestinationCaller,
+    newMintRecipient,
+    privateKey,
+    rpcUrl,
+    contracts: CONTRACTS,
+  })
 }
 
 // -- Platform API: Setup ----------------------------------------------------

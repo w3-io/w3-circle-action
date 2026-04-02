@@ -5,9 +5,10 @@ author: 'w3-io'
 inputs:
   command:
     description: >
-      Operation to perform. CCTP off-chain: get-attestation, wait-for-attestation,
-      get-supported-chains, get-domain-info. CCTP on-chain: approve-burn, burn, mint.
-      Wallets: create-wallet-set, create-wallet, get-wallet, list-wallets, get-balance.
+      Operation to perform. CCTP on-chain: approve-burn, burn, mint, replace-message
+      (burn/mint auto-detect EVM vs Solana). CCTP off-chain: get-attestation,
+      wait-for-attestation, get-supported-chains, get-domain-info. Wallets:
+      create-wallet-set, create-wallet, get-wallet, list-wallets, get-balance.
       Transactions: transfer, get-transaction, estimate-fee. Compliance: screen-address.
     required: true
 
@@ -33,7 +34,7 @@ inputs:
 
   # CCTP on-chain inputs
   private-key:
-    description: 'Wallet private key for on-chain CCTP commands (approve-burn, burn, mint)'
+    description: 'Wallet private key for on-chain CCTP commands. EVM: 0x-prefixed hex. Solana: base58 keypair or JSON byte array.'
     required: false
   rpc-url:
     description: 'JSON-RPC endpoint URL (can also set per-chain env vars like ETHEREUM_SEPOLIA_RPC_URL)'
@@ -41,11 +42,20 @@ inputs:
   destination-chain:
     description: 'Destination chain name for burn command (e.g. "avalanche-fuji")'
     required: false
+  destination-caller:
+    description: 'Restrict who can call receiveMessage on destination (address). Omit for permissionless.'
+    required: false
   message-bytes:
     description: 'Message bytes from burn step (for mint command)'
     required: false
   attestation:
     description: 'Attestation from wait-for-attestation (for mint command)'
+    required: false
+  original-message-bytes:
+    description: 'Original message bytes (for replace-message command)'
+    required: false
+  original-attestation:
+    description: 'Original attestation (for replace-message command)'
     required: false
 
   # CCTP off-chain inputs
