@@ -69087,7 +69087,7 @@ async function run() {
     const result = await handler(client)
     core.setOutput('result', JSON.stringify(result))
 
-    try { writeSummary(command, result) } catch { /* summary is best-effort */ }
+    try { await writeSummary(command, result) } catch { /* summary is best-effort */ }
   } catch (error) {
     if (error instanceof CircleError) {
       core.setFailed(`Circle error (${error.code}): ${error.message}`)
@@ -69286,7 +69286,7 @@ async function runScreenAddress(client) {
 
 // -- Job summary ------------------------------------------------------------
 
-function writeSummary(command, result) {
+async function writeSummary(command, result) {
   const heading = `Circle: ${command}`
 
   if (command === 'get-attestation' || command === 'wait-for-attestation') {
@@ -69301,7 +69301,7 @@ function writeSummary(command, result) {
     if (result.attempts) {
       core.summary.addRaw(`**Poll attempts:** ${result.attempts}\n\n`)
     }
-    core.summary.write()
+    await core.summary.write()
     return
   }
 
@@ -69322,14 +69322,14 @@ function writeSummary(command, result) {
     core.summary
       .addHeading(heading, 3)
       .addTable([headerRow, ...dataRows])
-      .write()
+      .write().catch(() => {}).catch(() => {})
     return
   }
 
   core.summary
     .addHeading(heading, 3)
     .addCodeBlock(JSON.stringify(result, null, 2), 'json')
-    .write()
+    .write().catch(() => {})
 }
 
 ;// CONCATENATED MODULE: ./src/index.js
