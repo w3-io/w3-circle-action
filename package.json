@@ -2,7 +2,7 @@
   "name": "w3-circle-action",
   "version": "1.0.0",
   "private": true,
-  "description": "W3 Circle Action — CCTP cross-chain USDC transfers via Circle APIs",
+  "description": "W3 Circle Action \u2014 CCTP cross-chain USDC transfers via Circle APIs",
   "type": "module",
   "scripts": {
     "bundle": "npm run format:write && npm run package",
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "@w3-io/action-core": "^0.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
