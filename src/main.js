@@ -55,6 +55,14 @@ export async function run() {
     const result = await handler(client)
     core.setOutput('result', JSON.stringify(result))
 
+    // Set individual outputs for piping between steps (avoids fromJSON on large values)
+    if (result.txHash) core.setOutput('tx-hash', result.txHash)
+    if (result.sourceDomain != null) core.setOutput('source-domain', String(result.sourceDomain))
+    if (result.messageHash) core.setOutput('message-hash', result.messageHash)
+    if (result.messageBytes) core.setOutput('message-bytes', result.messageBytes)
+    if (result.message) core.setOutput('message', result.message)
+    if (result.attestation) core.setOutput('attestation', result.attestation)
+
     try { await writeSummary(command, result) } catch { /* summary is best-effort */ }
   } catch (error) {
     if (error instanceof CircleError) {
