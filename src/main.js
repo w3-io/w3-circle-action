@@ -268,15 +268,9 @@ async function writeSummary(command, result) {
 
   if (command === 'get-attestation' || command === 'wait-for-attestation') {
     const status = result.status === 'complete' ? 'Complete' : 'Pending'
-    core.summary
-      .addHeading(heading, 3)
-      .addRaw(`**Message Hash:** \`${result.messageHash}\`\n\n`)
-      .addRaw(`**Status:** ${status}\n\n`)
+    core.summary.addHeading(heading, 3).addRaw(`**Status:** ${status}\n\n`)
     if (result.attestation) {
       core.summary.addRaw(`**Attestation:** \`${result.attestation.slice(0, 20)}...\`\n\n`)
-    }
-    if (result.attempts) {
-      core.summary.addRaw(`**Poll attempts:** ${result.attempts}\n\n`)
     }
     await core.summary.write()
     return
@@ -296,15 +290,12 @@ async function writeSummary(command, result) {
       c.network,
     ])
 
-    core.summary
-      .addHeading(heading, 3)
-      .addTable([headerRow, ...dataRows])
-      .write().catch(() => {}).catch(() => {})
+    core.summary.addHeading(heading, 3).addTable([headerRow, ...dataRows])
+    await core.summary.write()
     return
   }
 
-  core.summary
-    .addHeading(heading, 3)
+  core.summary.addHeading(heading, 3)
     .addCodeBlock(JSON.stringify(result, null, 2), 'json')
-    .write().catch(() => {})
+  await core.summary.write()
 }
