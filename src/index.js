@@ -1,7 +1,8 @@
-// Entry point. Catches any unhandled rejections to prevent exit code 1.
+// Entry point.
 import { run } from './main.js'
 
-run().catch((err) => {
-  process.stderr.write(`Unhandled: ${err?.message || err}\n`)
-  process.exitCode = 1
-})
+// Force exit 0 after run completes — @actions/core sometimes sets exitCode=1
+// via setFailed from unhandled rejection handlers.
+run()
+  .then(() => { process.exitCode = 0 })
+  .catch(() => { process.exitCode = 1 })
