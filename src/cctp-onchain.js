@@ -113,13 +113,17 @@ export async function burn({
   const parsedAmount = await parseAmount(network, sourceInfo.usdc, amount)
   const mintRecipient = addressToBytes32(recipient)
 
-  // Approve USDC for TokenMessenger (combined into burn to avoid nonce races)
+  // Approve USDC for TokenMessenger (combined into burn to avoid cross-step nonce races)
   await ethereum.callContract({
     network,
     contract: sourceInfo.usdc,
     method: 'function approve(address,uint256) returns (bool)',
     args: [chainContracts.tokenMessenger, parsedAmount],
   })
+
+  // Wait for approve tx to be mined before submitting burn tx
+  // (bridge doesn't manage pending nonces across sequential calls)
+  await new Promise((resolve) => setTimeout(resolve, 3000))
 
   let result
   if (destinationCaller) {
