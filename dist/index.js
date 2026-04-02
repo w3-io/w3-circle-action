@@ -67289,6 +67289,39 @@ class CircleClient {
   }
 
   /**
+   * Get CCTP V2 attestation by transaction hash and source domain.
+   *
+   * V2 uses `/v2/messages/{sourceDomain}?transactionHash={txHash}` instead
+   * of the V1 message-hash endpoint. Returns instantly when fee is sufficient.
+   *
+   * @param {string} txHash - Source chain transaction hash
+   * @param {number} sourceDomain - CCTP source domain number
+   * @returns {{ status: string, attestation: string|null, message: string|null }}
+   */
+  async getAttestationV2(txHash, sourceDomain) {
+    if (!txHash) throw new CircleError('tx-hash is required', { code: 'MISSING_TX_HASH' })
+
+    const data = await this.irisRequest(
+      'GET',
+      `/v2/messages/${sourceDomain}?transactionHash=${encodeURIComponent(txHash)}`,
+    )
+
+    const msg = data.messages?.[0]
+    if (!msg) {
+      return { status: 'not_found', attestation: null, message: null, txHash }
+    }
+
+    return {
+      txHash,
+      sourceDomain,
+      status: msg.status === 'complete' ? 'complete' : 'pending_confirmations',
+      attestation: msg.attestation !== 'PENDING' ? msg.attestation : null,
+      message: msg.message ?? null,
+      delayReason: msg.delayReason ?? null,
+    }
+  }
+
+  /**
    * List supported CCTP chains with domain numbers, chain IDs, and USDC addresses.
    *
    * @param {string} [network] - "mainnet" or "testnet" (default: both)
@@ -67371,6 +67404,42 @@ class CircleClient {
 
     throw new CircleError(
       `Attestation not ready after ${maxAttempts} attempts (${maxAttempts * pollInterval}s)`,
+      { code: 'ATTESTATION_TIMEOUT' },
+    )
+  }
+
+  /**
+   * Poll V2 attestation until complete or timeout.
+   *
+   * @param {string} txHash - Source chain transaction hash
+   * @param {number} sourceDomain - CCTP source domain number
+   * @param {object} [options]
+   * @param {number} [options.pollInterval=5] - Seconds between polls
+   * @param {number} [options.maxAttempts=60] - Maximum poll attempts
+   * @returns {{ status, attestation, message, attempts }}
+   */
+  async waitForAttestationV2(txHash, sourceDomain, { pollInterval = 5, maxAttempts = 60 } = {}) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.getAttestationV2(txHash, sourceDomain)
+
+      if (result.status === 'complete') {
+        return { ...result, attempts: attempt }
+      }
+
+      if (result.delayReason === 'insufficient_fee') {
+        throw new CircleError(
+          `CCTP V2 requires maxFee > 0. Set a fee in depositForBurn. Delay reason: ${result.delayReason}`,
+          { code: 'INSUFFICIENT_FEE' },
+        )
+      }
+
+      if (attempt < maxAttempts) {
+        await this.sleep(pollInterval * 1000)
+      }
+    }
+
+    throw new CircleError(
+      `V2 attestation not ready after ${maxAttempts} attempts`,
       { code: 'ATTESTATION_TIMEOUT' },
     )
   }
@@ -68424,23 +68493,26 @@ async function burn({
 
   let result
   if (destinationCaller) {
-    // CCTP V2: use the standard depositForBurn with destinationCaller set
+    // CCTP V2: depositForBurn with explicit destinationCaller
     const callerBytes32 = addressToBytes32(destinationCaller)
+    const DEFAULT_MAX_FEE = '100000'
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
       method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, '0', '0'],
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
     })
   } else {
-    // CCTP V2: depositForBurn has additional destinationCaller, maxFee, minFinalityThreshold params.
-    // destinationCaller = 0 (permissionless mint), maxFee = 0, minFinalityThreshold = 0.
+    // CCTP V2: depositForBurn with destinationCaller, maxFee, minFinalityThreshold.
+    // maxFee: Circle charges a fee for attestation. Default 100000 ($0.10 USDC).
+    // Set maxFee to 0 will cause attestation to be delayed (insufficient_fee).
     const zeroCaller = '0x0000000000000000000000000000000000000000000000000000000000000000'
+    const DEFAULT_MAX_FEE = '100000' // 0.10 USDC — covers attestation fee
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
       method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, '0', '0'],
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, DEFAULT_MAX_FEE, '0'],
     })
   }
 
@@ -68475,6 +68547,7 @@ async function burn({
 
   return {
     txHash: result.transactionHash || result.signature,
+    sourceDomain: sourceInfo.domain,
     messageBytes,
     messageHash: '0x' + messageHash,
     amount,
@@ -68511,7 +68584,7 @@ async function mint({ chain, messageBytes, attestation, contracts }) {
   const result = await ethereum.callContract({
     network,
     contract: chainContracts.messageTransmitter,
-    method: 'function receiveMessage(bytes,bytes) returns (bool)',
+    method: 'function receiveMessage(bytes,bytes)',
     args: [messageBytes, attestation],
   })
 
@@ -69020,11 +69093,23 @@ async function runGetAttestation(client) {
 }
 
 async function runWaitForAttestation(client) {
-  const messageHash = core.getInput('message-hash', { required: true })
+  const txHash = core.getInput('tx-hash')
+  const sourceDomain = core.getInput('source-domain')
+  const messageHash = core.getInput('message-hash')
   const pollIntervalInput = core.getInput('poll-interval')
   const maxAttemptsInput = core.getInput('max-attempts')
   const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
   const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
+
+  // V2: use tx-hash + source-domain (preferred — instant when fee is set)
+  if (txHash && sourceDomain) {
+    return client.waitForAttestationV2(txHash, Number(sourceDomain), { pollInterval, maxAttempts })
+  }
+
+  // V1 fallback: use message-hash
+  if (!messageHash) {
+    throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+  }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
 

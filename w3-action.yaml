@@ -27,10 +27,18 @@ commands:
       workflows that need to wait for attestation before calling
       receiveMessage on the destination chain.
     inputs:
+      tx-hash:
+        type: string
+        required: false
+        description: Source chain transaction hash (V2 — preferred, instant with fee)
+      source-domain:
+        type: number
+        required: false
+        description: 'CCTP source domain number (V2 — use with tx-hash)'
       message-hash:
         type: string
-        required: true
-        description: 0x-prefixed keccak256 hash of the CCTP message
+        required: false
+        description: 0x-prefixed keccak256 hash of the CCTP message (V1 fallback)
       poll-interval:
         type: number
         required: false

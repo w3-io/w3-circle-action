@@ -73,11 +73,23 @@ async function runGetAttestation(client) {
 }
 
 async function runWaitForAttestation(client) {
-  const messageHash = core.getInput('message-hash', { required: true })
+  const txHash = core.getInput('tx-hash')
+  const sourceDomain = core.getInput('source-domain')
+  const messageHash = core.getInput('message-hash')
   const pollIntervalInput = core.getInput('poll-interval')
   const maxAttemptsInput = core.getInput('max-attempts')
   const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
   const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
+
+  // V2: use tx-hash + source-domain (preferred — instant when fee is set)
+  if (txHash && sourceDomain) {
+    return client.waitForAttestationV2(txHash, Number(sourceDomain), { pollInterval, maxAttempts })
+  }
+
+  // V1 fallback: use message-hash
+  if (!messageHash) {
+    throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+  }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
 

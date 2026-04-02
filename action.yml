@@ -59,8 +59,14 @@ inputs:
     required: false
 
   # CCTP off-chain inputs
+  tx-hash:
+    description: 'Source chain transaction hash for V2 attestation (preferred — instant with fee)'
+    required: false
+  source-domain:
+    description: 'CCTP source domain number for V2 attestation (use with tx-hash)'
+    required: false
   message-hash:
-    description: '0x-prefixed keccak256 hash of the CCTP message (from MessageSent event)'
+    description: '0x-prefixed keccak256 hash of the CCTP message (V1 fallback)'
     required: false
   chain:
     description: 'Chain name (e.g. "ethereum", "arbitrum-sepolia")'

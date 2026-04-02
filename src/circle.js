@@ -205,6 +205,39 @@ export class CircleClient {
   }
 
   /**
+   * Get CCTP V2 attestation by transaction hash and source domain.
+   *
+   * V2 uses `/v2/messages/{sourceDomain}?transactionHash={txHash}` instead
+   * of the V1 message-hash endpoint. Returns instantly when fee is sufficient.
+   *
+   * @param {string} txHash - Source chain transaction hash
+   * @param {number} sourceDomain - CCTP source domain number
+   * @returns {{ status: string, attestation: string|null, message: string|null }}
+   */
+  async getAttestationV2(txHash, sourceDomain) {
+    if (!txHash) throw new CircleError('tx-hash is required', { code: 'MISSING_TX_HASH' })
+
+    const data = await this.irisRequest(
+      'GET',
+      `/v2/messages/${sourceDomain}?transactionHash=${encodeURIComponent(txHash)}`,
+    )
+
+    const msg = data.messages?.[0]
+    if (!msg) {
+      return { status: 'not_found', attestation: null, message: null, txHash }
+    }
+
+    return {
+      txHash,
+      sourceDomain,
+      status: msg.status === 'complete' ? 'complete' : 'pending_confirmations',
+      attestation: msg.attestation !== 'PENDING' ? msg.attestation : null,
+      message: msg.message ?? null,
+      delayReason: msg.delayReason ?? null,
+    }
+  }
+
+  /**
    * List supported CCTP chains with domain numbers, chain IDs, and USDC addresses.
    *
    * @param {string} [network] - "mainnet" or "testnet" (default: both)
@@ -287,6 +320,42 @@ export class CircleClient {
 
     throw new CircleError(
       `Attestation not ready after ${maxAttempts} attempts (${maxAttempts * pollInterval}s)`,
+      { code: 'ATTESTATION_TIMEOUT' },
+    )
+  }
+
+  /**
+   * Poll V2 attestation until complete or timeout.
+   *
+   * @param {string} txHash - Source chain transaction hash
+   * @param {number} sourceDomain - CCTP source domain number
+   * @param {object} [options]
+   * @param {number} [options.pollInterval=5] - Seconds between polls
+   * @param {number} [options.maxAttempts=60] - Maximum poll attempts
+   * @returns {{ status, attestation, message, attempts }}
+   */
+  async waitForAttestationV2(txHash, sourceDomain, { pollInterval = 5, maxAttempts = 60 } = {}) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.getAttestationV2(txHash, sourceDomain)
+
+      if (result.status === 'complete') {
+        return { ...result, attempts: attempt }
+      }
+
+      if (result.delayReason === 'insufficient_fee') {
+        throw new CircleError(
+          `CCTP V2 requires maxFee > 0. Set a fee in depositForBurn. Delay reason: ${result.delayReason}`,
+          { code: 'INSUFFICIENT_FEE' },
+        )
+      }
+
+      if (attempt < maxAttempts) {
+        await this.sleep(pollInterval * 1000)
+      }
+    }
+
+    throw new CircleError(
+      `V2 attestation not ready after ${maxAttempts} attempts`,
       { code: 'ATTESTATION_TIMEOUT' },
     )
   }

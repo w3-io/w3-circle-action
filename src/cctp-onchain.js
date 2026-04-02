@@ -115,23 +115,26 @@ export async function burn({
 
   let result
   if (destinationCaller) {
-    // CCTP V2: use the standard depositForBurn with destinationCaller set
+    // CCTP V2: depositForBurn with explicit destinationCaller
     const callerBytes32 = addressToBytes32(destinationCaller)
+    const DEFAULT_MAX_FEE = '100000'
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
       method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, '0', '0'],
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
     })
   } else {
-    // CCTP V2: depositForBurn has additional destinationCaller, maxFee, minFinalityThreshold params.
-    // destinationCaller = 0 (permissionless mint), maxFee = 0, minFinalityThreshold = 0.
+    // CCTP V2: depositForBurn with destinationCaller, maxFee, minFinalityThreshold.
+    // maxFee: Circle charges a fee for attestation. Default 100000 ($0.10 USDC).
+    // Set maxFee to 0 will cause attestation to be delayed (insufficient_fee).
     const zeroCaller = '0x0000000000000000000000000000000000000000000000000000000000000000'
+    const DEFAULT_MAX_FEE = '100000' // 0.10 USDC — covers attestation fee
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
       method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, '0', '0'],
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, DEFAULT_MAX_FEE, '0'],
     })
   }
 
@@ -166,6 +169,7 @@ export async function burn({
 
   return {
     txHash: result.transactionHash || result.signature,
+    sourceDomain: sourceInfo.domain,
     messageBytes,
     messageHash: '0x' + messageHash,
     amount,
@@ -202,7 +206,7 @@ export async function mint({ chain, messageBytes, attestation, contracts }) {
   const result = await ethereum.callContract({
     network,
     contract: chainContracts.messageTransmitter,
-    method: 'function receiveMessage(bytes,bytes) returns (bool)',
+    method: 'function receiveMessage(bytes,bytes)',
     args: [messageBytes, attestation],
   })
 
