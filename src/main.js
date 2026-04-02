@@ -63,7 +63,8 @@ export async function run() {
     if (result.message) core.setOutput('message', result.message)
     if (result.attestation) core.setOutput('attestation', result.attestation)
 
-    try { await writeSummary(command, result) } catch { /* summary is best-effort */ }
+    // Summary disabled — @actions/core Summary throws unhandled rejections
+    // in environments without GITHUB_STEP_SUMMARY set.
   } catch (error) {
     if (error instanceof CircleError) {
       core.setFailed(`Circle error (${error.code}): ${error.message}`)

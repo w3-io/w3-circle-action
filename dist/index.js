@@ -67080,7 +67080,7 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7484);
+var lib_core = __nccwpck_require__(7484);
 ;// CONCATENATED MODULE: ./src/circle.js
 /**
  * Circle API client.
@@ -69064,43 +69064,44 @@ const COMMANDS = {
 
 async function run() {
   try {
-    const command = core.getInput('command', { required: true })
+    const command = lib_core.getInput('command', { required: true })
     const handler = COMMANDS[command]
 
     if (!handler) {
-      core.setFailed(
+      lib_core.setFailed(
         `Unknown command: "${command}". Available: ${Object.keys(COMMANDS).join(', ')}`,
       )
       return
     }
 
-    const timeoutInput = core.getInput('timeout')
+    const timeoutInput = lib_core.getInput('timeout')
     const client = new CircleClient({
-      apiKey: core.getInput('api-key') || undefined,
-      apiUrl: core.getInput('api-url') || undefined,
-      entitySecret: core.getInput('entity-secret') || undefined,
-      irisUrl: core.getInput('iris-url') || undefined,
-      sandbox: core.getInput('sandbox') === 'true',
+      apiKey: lib_core.getInput('api-key') || undefined,
+      apiUrl: lib_core.getInput('api-url') || undefined,
+      entitySecret: lib_core.getInput('entity-secret') || undefined,
+      irisUrl: lib_core.getInput('iris-url') || undefined,
+      sandbox: lib_core.getInput('sandbox') === 'true',
       timeout: timeoutInput ? Number(timeoutInput) : undefined,
     })
 
     const result = await handler(client)
-    core.setOutput('result', JSON.stringify(result))
+    lib_core.setOutput('result', JSON.stringify(result))
 
     // Set individual outputs for piping between steps (avoids fromJSON on large values)
-    if (result.txHash) core.setOutput('tx_hash', result.txHash)
-    if (result.sourceDomain != null) core.setOutput('source_domain', String(result.sourceDomain))
-    if (result.messageHash) core.setOutput('message_hash', result.messageHash)
-    if (result.messageBytes) core.setOutput('message_bytes', result.messageBytes)
-    if (result.message) core.setOutput('message', result.message)
-    if (result.attestation) core.setOutput('attestation', result.attestation)
+    if (result.txHash) lib_core.setOutput('tx_hash', result.txHash)
+    if (result.sourceDomain != null) lib_core.setOutput('source_domain', String(result.sourceDomain))
+    if (result.messageHash) lib_core.setOutput('message_hash', result.messageHash)
+    if (result.messageBytes) lib_core.setOutput('message_bytes', result.messageBytes)
+    if (result.message) lib_core.setOutput('message', result.message)
+    if (result.attestation) lib_core.setOutput('attestation', result.attestation)
 
-    try { await writeSummary(command, result) } catch { /* summary is best-effort */ }
+    // Summary disabled — @actions/core Summary throws unhandled rejections
+    // in environments without GITHUB_STEP_SUMMARY set.
   } catch (error) {
     if (error instanceof CircleError) {
-      core.setFailed(`Circle error (${error.code}): ${error.message}`)
+      lib_core.setFailed(`Circle error (${error.code}): ${error.message}`)
     } else {
-      core.setFailed(error.message)
+      lib_core.setFailed(error.message)
     }
   }
 }
@@ -69108,17 +69109,17 @@ async function run() {
 // -- Command handlers -------------------------------------------------------
 
 async function runGetAttestation(client) {
-  const messageHash = core.getInput('message-hash', { required: true })
+  const messageHash = lib_core.getInput('message-hash', { required: true })
   return client.getAttestation(messageHash)
 }
 
 async function runWaitForAttestation(client) {
   // Support both hyphenated and underscored input names
-  const txHash = core.getInput('tx-hash') || core.getInput('tx_hash')
-  const sourceDomain = core.getInput('source-domain') || core.getInput('source_domain')
-  const messageHash = core.getInput('message-hash') || core.getInput('message_hash')
-  const pollIntervalInput = core.getInput('poll-interval')
-  const maxAttemptsInput = core.getInput('max-attempts')
+  const txHash = lib_core.getInput('tx-hash') || lib_core.getInput('tx_hash')
+  const sourceDomain = lib_core.getInput('source-domain') || lib_core.getInput('source_domain')
+  const messageHash = lib_core.getInput('message-hash') || lib_core.getInput('message_hash')
+  const pollIntervalInput = lib_core.getInput('poll-interval')
+  const maxAttemptsInput = lib_core.getInput('max-attempts')
   const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
   const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
 
@@ -69135,29 +69136,29 @@ async function runWaitForAttestation(client) {
 }
 
 async function runGetSupportedChains(client) {
-  const network = core.getInput('network') || undefined
+  const network = lib_core.getInput('network') || undefined
   return client.getSupportedChains(network)
 }
 
 async function runGetDomainInfo(client) {
-  const chain = core.getInput('chain', { required: true })
+  const chain = lib_core.getInput('chain', { required: true })
   return client.getDomainInfo(chain)
 }
 
 // -- CCTP on-chain commands --------------------------------------------------
 
 async function runApproveBurn() {
-  const chain = core.getInput('chain', { required: true })
-  const amount = core.getInput('amount', { required: true })
+  const chain = lib_core.getInput('chain', { required: true })
+  const amount = lib_core.getInput('amount', { required: true })
   return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS })
 }
 
 async function runBurn() {
-  const chain = core.getInput('chain', { required: true })
-  const destinationChain = core.getInput('destination-chain', { required: true })
-  const recipient = core.getInput('destination-address', { required: true })
-  const amount = core.getInput('amount', { required: true })
-  const destinationCaller = core.getInput('destination-caller') || undefined
+  const chain = lib_core.getInput('chain', { required: true })
+  const destinationChain = lib_core.getInput('destination-chain', { required: true })
+  const recipient = lib_core.getInput('destination-address', { required: true })
+  const amount = lib_core.getInput('amount', { required: true })
+  const destinationCaller = lib_core.getInput('destination-caller') || undefined
 
   // Route to Solana implementation for Solana source chains
   const chainInfo = DOMAINS[chain]
@@ -69185,9 +69186,9 @@ async function runBurn() {
 }
 
 async function runMint() {
-  const chain = core.getInput('chain', { required: true })
-  const messageBytes = core.getInput('message-bytes', { required: true })
-  const attestation = core.getInput('attestation', { required: true })
+  const chain = lib_core.getInput('chain', { required: true })
+  const messageBytes = lib_core.getInput('message-bytes', { required: true })
+  const attestation = lib_core.getInput('attestation', { required: true })
 
   // Route to Solana implementation for Solana chains
   const chainInfo = DOMAINS[chain]
@@ -69205,10 +69206,10 @@ async function runMint() {
 }
 
 async function runReplaceMessage() {
-  const chain = core.getInput('chain', { required: true })
-  const originalMessageBytes = core.getInput('original-message-bytes', { required: true })
-  const originalAttestation = core.getInput('original-attestation', { required: true })
-  const newDestinationCaller = core.getInput('destination-caller') || undefined
+  const chain = lib_core.getInput('chain', { required: true })
+  const originalMessageBytes = lib_core.getInput('original-message-bytes', { required: true })
+  const originalAttestation = lib_core.getInput('original-attestation', { required: true })
+  const newDestinationCaller = lib_core.getInput('destination-caller') || undefined
   return replaceMessage({
     chain,
     originalMessageBytes,
@@ -69227,68 +69228,68 @@ async function runRegisterEntitySecret(client) {
 // -- Platform API: Wallets --------------------------------------------------
 
 async function runCreateWalletSet(client) {
-  const name = core.getInput('name', { required: true })
+  const name = lib_core.getInput('name', { required: true })
   return client.createWalletSet({ name })
 }
 
 async function runCreateWallet(client) {
-  const walletSetId = core.getInput('wallet-set-id', { required: true })
-  const blockchains = core.getInput('blockchains', { required: true })
+  const walletSetId = lib_core.getInput('wallet-set-id', { required: true })
+  const blockchains = lib_core.getInput('blockchains', { required: true })
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const countInput = core.getInput('count')
+  const countInput = lib_core.getInput('count')
   const count = countInput ? Number(countInput) : 1
   return client.createWallet({ walletSetId, blockchains, count })
 }
 
 async function runGetWallet(client) {
-  const walletId = core.getInput('wallet-id', { required: true })
+  const walletId = lib_core.getInput('wallet-id', { required: true })
   return client.getWallet(walletId)
 }
 
 async function runListWallets(client) {
-  const walletSetId = core.getInput('wallet-set-id') || undefined
-  const blockchain = core.getInput('blockchain') || undefined
-  const pageSizeInput = core.getInput('page-size')
+  const walletSetId = lib_core.getInput('wallet-set-id') || undefined
+  const blockchain = lib_core.getInput('blockchain') || undefined
+  const pageSizeInput = lib_core.getInput('page-size')
   const pageSize = pageSizeInput ? Number(pageSizeInput) : undefined
   return client.listWallets({ walletSetId, blockchain, pageSize })
 }
 
 async function runGetBalance(client) {
-  const walletId = core.getInput('wallet-id', { required: true })
+  const walletId = lib_core.getInput('wallet-id', { required: true })
   return client.getBalance(walletId)
 }
 
 // -- Platform API: Transactions ---------------------------------------------
 
 async function runTransfer(client) {
-  const walletId = core.getInput('wallet-id', { required: true })
-  const destinationAddress = core.getInput('destination-address', { required: true })
-  const amount = core.getInput('amount', { required: true })
-  const tokenId = core.getInput('token-id') || undefined
-  const blockchain = core.getInput('blockchain') || undefined
+  const walletId = lib_core.getInput('wallet-id', { required: true })
+  const destinationAddress = lib_core.getInput('destination-address', { required: true })
+  const amount = lib_core.getInput('amount', { required: true })
+  const tokenId = lib_core.getInput('token-id') || undefined
+  const blockchain = lib_core.getInput('blockchain') || undefined
   return client.transfer({ walletId, destinationAddress, tokenId, amount, blockchain })
 }
 
 async function runGetTransaction(client) {
-  const transactionId = core.getInput('transaction-id', { required: true })
+  const transactionId = lib_core.getInput('transaction-id', { required: true })
   return client.getTransaction(transactionId)
 }
 
 async function runEstimateFee(client) {
-  const walletId = core.getInput('wallet-id', { required: true })
-  const destinationAddress = core.getInput('destination-address', { required: true })
-  const tokenId = core.getInput('token-id', { required: true })
-  const amount = core.getInput('amount', { required: true })
+  const walletId = lib_core.getInput('wallet-id', { required: true })
+  const destinationAddress = lib_core.getInput('destination-address', { required: true })
+  const tokenId = lib_core.getInput('token-id', { required: true })
+  const amount = lib_core.getInput('amount', { required: true })
   return client.estimateFee({ walletId, destinationAddress, tokenId, amount })
 }
 
 // -- Platform API: Compliance -----------------------------------------------
 
 async function runScreenAddress(client) {
-  const address = core.getInput('address', { required: true })
-  const chain = core.getInput('blockchain', { required: true })
+  const address = lib_core.getInput('address', { required: true })
+  const chain = lib_core.getInput('blockchain', { required: true })
   return client.screenAddress(address, { chain })
 }
 
