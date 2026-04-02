@@ -68424,20 +68424,23 @@ async function burn({
 
   let result
   if (destinationCaller) {
+    // CCTP V2: use the standard depositForBurn with destinationCaller set
     const callerBytes32 = addressToBytes32(destinationCaller)
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
-      method:
-        'function depositForBurnWithCaller(uint256,uint32,bytes32,address,bytes32) returns (uint64)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32],
+      method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, '0', '0'],
     })
   } else {
+    // CCTP V2: depositForBurn has additional destinationCaller, maxFee, minFinalityThreshold params.
+    // destinationCaller = 0 (permissionless mint), maxFee = 0, minFinalityThreshold = 0.
+    const zeroCaller = '0x0000000000000000000000000000000000000000000000000000000000000000'
     result = await ethereum.callContract({
       network,
       contract: chainContracts.tokenMessenger,
-      method: 'function depositForBurn(uint256,uint32,bytes32,address) returns (uint64)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc],
+      method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
+      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, '0', '0'],
     })
   }
 
