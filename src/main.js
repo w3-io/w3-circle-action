@@ -266,9 +266,7 @@ async function runScreenAddress(client) {
   return client.screenAddress(address, { chain })
 }
 
-// -- Job summary ------------------------------------------------------------
 
-async function writeSummary(command, result) {
   const heading = `Circle: ${command}`
 
   if (command === 'get-attestation' || command === 'wait-for-attestation') {
