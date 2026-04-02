@@ -1,122 +1,65 @@
 /**
- * CCTP on-chain operations: approve, burn, and mint.
+ * CCTP on-chain operations via the W3 syscall bridge.
  *
- * Uses ethers.js to interact with CCTP smart contracts directly.
- * This enables W3 workflows to perform cross-chain USDC transfers
- * without relying on Circle's Platform API — just a wallet private
- * key and RPC endpoints.
+ * Uses bridge.chain() for all contract interactions — no bundled ethers.
+ * The bridge handles signing, gas estimation, and broadcasting.
+ * Private keys are held by the bridge via W3_SECRET_* env vars.
  *
  * Flow:
  *   1. approve-burn: Approve TokenMessenger to spend USDC
  *   2. burn: Call depositForBurn on source chain → get messageBytes + messageHash
- *   3. (wait-for-attestation: existing Phase 1 command)
+ *   3. (wait-for-attestation: existing IRIS API command)
  *   4. mint: Call receiveMessage on destination chain → USDC minted
  */
 
-import { ethers } from 'ethers'
+import { bridge } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
-
-// CCTP ABIs (minimal — only the functions we call)
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) external returns (bool)',
-  'function allowance(address owner, address spender) external view returns (uint256)',
-  'function balanceOf(address account) external view returns (uint256)',
-  'function decimals() external view returns (uint8)',
-]
-
-const TOKEN_MESSENGER_ABI = [
-  'function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken) external returns (uint64 nonce)',
-  'function depositForBurnWithCaller(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller) external returns (uint64 nonce)',
-  'event DepositForBurn(uint64 indexed nonce, address indexed burnToken, uint256 amount, address indexed depositor, bytes32 mintRecipient, uint32 destinationDomain, bytes32 destinationTokenMessenger, bytes32 destinationCaller)',
-]
-
-const MESSAGE_TRANSMITTER_ABI = [
-  'function receiveMessage(bytes message, bytes attestation) external returns (bool success)',
-  'function replaceMessage(bytes originalMessage, bytes originalAttestation, bytes newMessageBody, bytes32 newDestinationCaller) external',
-  'event MessageSent(bytes message)',
-  'event MessageReceived(address indexed caller, uint32 sourceDomain, uint64 indexed nonce, bytes32 sender, bytes messageBody)',
-]
-
-/**
- * Resolve an RPC URL for a chain.
- *
- * Checks for chain-specific env vars first (e.g., ETHEREUM_SEPOLIA_RPC_URL),
- * then falls back to a generic RPC_URL input, then to public defaults.
- *
- * @param {string} chain - Chain name (e.g., "ethereum-sepolia")
- * @returns {string} RPC URL
- */
-function resolveRpcUrl(chain, inputRpcUrl) {
-  // Check chain-specific env var: ETHEREUM_SEPOLIA_RPC_URL
-  const envKey = chain.toUpperCase().replace(/-/g, '_') + '_RPC_URL'
-  if (process.env[envKey]) return process.env[envKey]
-
-  // Check generic input
-  if (inputRpcUrl) return inputRpcUrl
-
-  // Public defaults for testnets (rate-limited, fine for testing)
-  const defaults = {
-    'ethereum-sepolia': 'https://ethereum-sepolia-rpc.publicnode.com',
-    'avalanche-fuji': 'https://api.avax-test.network/ext/bc/C/rpc',
-    'arbitrum-sepolia': 'https://sepolia-rollup.arbitrum.io/rpc',
-    'base-sepolia': 'https://sepolia.base.org',
-    'polygon-amoy': 'https://rpc-amoy.polygon.technology',
-  }
-
-  if (defaults[chain]) return defaults[chain]
-
-  throw new CircleError(
-    `No RPC URL for "${chain}". Set ${envKey} env var or provide rpc-url input.`,
-    { code: 'MISSING_RPC_URL' },
-  )
-}
-
-/**
- * Create a signer from a private key and RPC URL.
- *
- * @param {string} privateKey - 0x-prefixed private key
- * @param {string} rpcUrl - JSON-RPC endpoint
- * @returns {ethers.Wallet} Connected wallet
- */
-function createSigner(privateKey, rpcUrl) {
-  if (!privateKey) {
-    throw new CircleError('private-key is required for on-chain CCTP commands', {
-      code: 'MISSING_PRIVATE_KEY',
-    })
-  }
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl)
-  return new ethers.Wallet(privateKey, provider)
-}
 
 /**
  * Pad an Ethereum address to bytes32 for CCTP.
- *
- * CCTP expects recipient addresses as bytes32 — a 20-byte address
- * left-padded with 12 zero bytes.
- *
- * @param {string} address - 0x-prefixed Ethereum address
- * @returns {string} bytes32 representation
+ * 20-byte address left-padded with 12 zero bytes.
  */
 function addressToBytes32(address) {
-  return ethers.zeroPadValue(address, 32)
+  const clean = address.toLowerCase().replace('0x', '')
+  return '0x' + '0'.repeat(24) + clean
 }
 
 /**
- * Approve TokenMessenger to spend USDC.
- *
- * @param {object} options
- * @param {string} options.chain - Source chain name
- * @param {string} options.amount - USDC amount (human-readable, e.g., "10.5")
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
- * @param {object} options.domains - DOMAINS from circle.js
- * @param {object} options.contracts - CONTRACTS from circle.js
- * @returns {{ txHash, spender, amount, allowance }}
+ * Parse logs JSON from bridge response to find a specific event.
  */
-export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, contracts }) {
+function findEvent(logsJson, contractAddress, eventTopic) {
+  const logs = typeof logsJson === 'string' ? JSON.parse(logsJson) : logsJson
+  for (const log of logs) {
+    const addr = (log.address || '').toLowerCase()
+    const topics = log.topics || []
+    if (
+      addr === contractAddress.toLowerCase() &&
+      topics[0]?.toLowerCase() === eventTopic.toLowerCase()
+    ) {
+      return log
+    }
+  }
+  return null
+}
+
+// Event topic hashes
+const MESSAGE_SENT_TOPIC =
+  '0x8c5261668696ce22758910d05bab8f186d6eb247ceac2af2e82c7dc17669b036'
+const DEPOSIT_FOR_BURN_TOPIC =
+  '0x2fa9ca894982930190727e75500a97d8dc500233a5065e0f3126c48fbe0343c0'
+
+/**
+ * Approve TokenMessenger to spend USDC via bridge.
+ */
+export async function approveBurn({
+  chain,
+  amount,
+  domains,
+  contracts,
+}) {
   const chainInfo = domains[chain]
-  if (!chainInfo) throw new CircleError(`Unknown chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
+  if (!chainInfo)
+    throw new CircleError(`Unknown chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
 
   const chainContracts = contracts[chain]
   if (!chainContracts) {
@@ -125,66 +68,45 @@ export async function approveBurn({ chain, amount, privateKey, rpcUrl, domains, 
     })
   }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
+  // Get decimals via read-contract
+  const decimalsResult = await bridge.chain('ethereum', 'read-contract', {
+    contractAddress: chainInfo.usdc,
+    functionSignature: 'function decimals() view returns (uint8)',
+    args: '[]',
+  }, chain)
+  const decimals = parseInt(decimalsResult.result || '6', 10)
 
-  const usdc = new ethers.Contract(chainInfo.usdc, ERC20_ABI, signer)
-  const decimals = await usdc.decimals()
-  const parsedAmount = ethers.parseUnits(amount, decimals)
+  // Check balance
+  const balResult = await bridge.chain('ethereum', 'get-token-balance', {
+    address: 'self', // bridge resolves signer address
+    tokenAddress: chainInfo.usdc,
+  }, chain)
 
-  // Check current balance
-  const balance = await usdc.balanceOf(signer.address)
-  if (balance < parsedAmount) {
-    throw new CircleError(
-      `Insufficient USDC balance: have ${ethers.formatUnits(balance, decimals)}, need ${amount}`,
-      { code: 'INSUFFICIENT_BALANCE' },
-    )
-  }
-
-  // Always approve — don't skip even if allowance looks sufficient.
-  // In a multi-validator environment, different validators execute
-  // approve and burn steps. A stale allowance check can cause the
-  // burn to revert if the allowance was consumed by a prior run.
-  const tx = await usdc.approve(chainContracts.tokenMessenger, parsedAmount)
-  const receipt = await tx.wait()
-
-  const newAllowance = await usdc.allowance(signer.address, chainContracts.tokenMessenger)
+  // Approve
+  const approveResult = await bridge.chain('ethereum', 'call-contract', {
+    contractAddress: chainInfo.usdc,
+    functionSignature:
+      'function approve(address spender, uint256 amount) returns (bool)',
+    args: JSON.stringify([chainContracts.tokenMessenger, amount]),
+  }, chain)
 
   return {
-    txHash: receipt.hash,
+    txHash: approveResult.txHash,
     spender: chainContracts.tokenMessenger,
-    amount: amount,
-    allowance: ethers.formatUnits(newAllowance, decimals),
-    skipped: false,
+    amount,
     chain,
-    blockNumber: receipt.blockNumber,
+    blockNumber: approveResult.blockNumber,
   }
 }
 
 /**
  * Burn USDC on source chain via CCTP depositForBurn.
- *
- * Returns the messageBytes and messageHash needed for attestation
- * and minting on the destination chain.
- *
- * @param {object} options
- * @param {string} options.chain - Source chain name
- * @param {string} options.destinationChain - Destination chain name
- * @param {string} options.recipient - Recipient address on destination chain
- * @param {string} options.amount - USDC amount (human-readable)
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
- * @param {object} options.domains - DOMAINS from circle.js
- * @param {object} options.contracts - CONTRACTS from circle.js
- * @returns {{ txHash, messageBytes, messageHash, nonce, amount, source, destination }}
  */
 export async function burn({
   chain,
   destinationChain,
   recipient,
   amount,
-  privateKey,
-  rpcUrl,
   domains,
   contracts,
   destinationCaller,
@@ -192,271 +114,194 @@ export async function burn({
   const sourceInfo = domains[chain]
   const destInfo = domains[destinationChain]
   if (!sourceInfo)
-    throw new CircleError(`Unknown source chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
-  if (!destInfo) {
+    throw new CircleError(`Unknown source chain: ${chain}`, {
+      code: 'UNKNOWN_CHAIN',
+    })
+  if (!destInfo)
     throw new CircleError(`Unknown destination chain: ${destinationChain}`, {
       code: 'UNKNOWN_CHAIN',
     })
-  }
 
   const chainContracts = contracts[chain]
-  if (!chainContracts) {
-    throw new CircleError(`No CCTP contracts configured for ${chain}`, {
+  if (!chainContracts)
+    throw new CircleError(`No CCTP contracts for ${chain}`, {
       code: 'MISSING_CONTRACTS',
     })
-  }
 
-  if (!recipient) {
-    throw new CircleError('recipient address is required', { code: 'MISSING_RECIPIENT' })
-  }
-
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
-
-  // Parse amount
-  const usdc = new ethers.Contract(sourceInfo.usdc, ERC20_ABI, signer)
-  const decimals = await usdc.decimals()
-  const parsedAmount = ethers.parseUnits(amount, decimals)
-
-  // Call depositForBurn (or depositForBurnWithCaller if destinationCaller specified)
-  const tokenMessenger = new ethers.Contract(
-    chainContracts.tokenMessenger,
-    TOKEN_MESSENGER_ABI,
-    signer,
-  )
+  if (!recipient)
+    throw new CircleError('recipient address is required', {
+      code: 'MISSING_RECIPIENT',
+    })
 
   const mintRecipient = addressToBytes32(recipient)
 
-  let tx
+  let result
   if (destinationCaller) {
     const callerBytes32 = addressToBytes32(destinationCaller)
-    tx = await tokenMessenger.depositForBurnWithCaller(
-      parsedAmount,
-      destInfo.domain,
-      mintRecipient,
-      sourceInfo.usdc,
-      callerBytes32,
-    )
+    result = await bridge.chain('ethereum', 'call-contract', {
+      contractAddress: chainContracts.tokenMessenger,
+      functionSignature:
+        'function depositForBurnWithCaller(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller) returns (uint64 nonce)',
+      args: JSON.stringify([
+        amount,
+        destInfo.domain,
+        mintRecipient,
+        sourceInfo.usdc,
+        callerBytes32,
+      ]),
+    }, chain)
   } else {
-    tx = await tokenMessenger.depositForBurn(
-      parsedAmount,
-      destInfo.domain,
-      mintRecipient,
-      sourceInfo.usdc,
-    )
+    result = await bridge.chain('ethereum', 'call-contract', {
+      contractAddress: chainContracts.tokenMessenger,
+      functionSignature:
+        'function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken) returns (uint64 nonce)',
+      args: JSON.stringify([
+        amount,
+        destInfo.domain,
+        mintRecipient,
+        sourceInfo.usdc,
+      ]),
+    }, chain)
   }
 
-  const receipt = await tx.wait()
-
-  // Extract MessageSent event to get messageBytes
-  const messageTransmitter = new ethers.Contract(
+  // Extract MessageSent event from logs
+  const msgLog = findEvent(
+    result.logs,
     chainContracts.messageTransmitter,
-    MESSAGE_TRANSMITTER_ABI,
-    signer,
+    MESSAGE_SENT_TOPIC,
   )
-
-  let messageBytes = null
-  for (const log of receipt.logs) {
-    try {
-      const parsed = messageTransmitter.interface.parseLog({
-        topics: log.topics,
-        data: log.data,
-      })
-      if (parsed && parsed.name === 'MessageSent') {
-        messageBytes = parsed.args.message
-        break
-      }
-    } catch {
-      // Not a MessageSent event from this contract
-    }
-  }
-
-  if (!messageBytes) {
-    throw new CircleError('MessageSent event not found in transaction receipt', {
+  if (!msgLog) {
+    throw new CircleError('MessageSent event not found in receipt', {
       code: 'EVENT_NOT_FOUND',
     })
   }
+  const messageBytes = msgLog.data
 
-  // Compute messageHash (keccak256 of messageBytes)
-  const messageHash = ethers.keccak256(messageBytes)
+  // Compute messageHash via bridge crypto
+  const hashResult = await bridge.crypto('keccak-256', { data: messageBytes })
+  const messageHash = hashResult.hash
 
   // Extract nonce from DepositForBurn event
-  let nonce = null
-  for (const log of receipt.logs) {
-    try {
-      const parsed = tokenMessenger.interface.parseLog({
-        topics: log.topics,
-        data: log.data,
-      })
-      if (parsed && parsed.name === 'DepositForBurn') {
-        nonce = parsed.args.nonce.toString()
-        break
-      }
-    } catch {
-      // Not our event
-    }
-  }
+  const burnLog = findEvent(
+    result.logs,
+    chainContracts.tokenMessenger,
+    DEPOSIT_FOR_BURN_TOPIC,
+  )
+  const nonce = burnLog?.topics?.[1]
+    ? parseInt(burnLog.topics[1], 16).toString()
+    : null
 
   return {
-    txHash: receipt.hash,
-    messageBytes: messageBytes,
-    messageHash: messageHash,
+    txHash: result.txHash,
+    messageBytes,
+    messageHash,
     nonce,
     amount,
     source: chain,
     destination: destinationChain,
     recipient,
-    blockNumber: receipt.blockNumber,
+    blockNumber: result.blockNumber,
   }
 }
 
 /**
  * Mint USDC on destination chain by calling receiveMessage.
- *
- * Requires the messageBytes from the burn step and the attestation
- * from Circle's IRIS API.
- *
- * @param {object} options
- * @param {string} options.chain - Destination chain name
- * @param {string} options.messageBytes - Message bytes from burn step
- * @param {string} options.attestation - Attestation from IRIS API
- * @param {string} options.privateKey - Wallet private key
- * @param {string} [options.rpcUrl] - RPC endpoint override
- * @param {object} options.contracts - CONTRACTS from circle.js
- * @returns {{ txHash, chain, blockNumber, success }}
  */
-export async function mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts }) {
+export async function mint({
+  chain,
+  messageBytes,
+  attestation,
+  contracts,
+}) {
   const chainContracts = contracts[chain]
-  if (!chainContracts) {
-    throw new CircleError(`No CCTP contracts configured for ${chain}`, {
+  if (!chainContracts)
+    throw new CircleError(`No CCTP contracts for ${chain}`, {
       code: 'MISSING_CONTRACTS',
     })
-  }
-
-  if (!messageBytes) {
-    throw new CircleError('message-bytes is required (from burn step)', {
+  if (!messageBytes)
+    throw new CircleError('message-bytes is required', {
       code: 'MISSING_MESSAGE_BYTES',
     })
-  }
-  if (!attestation) {
-    throw new CircleError('attestation is required (from wait-for-attestation step)', {
+  if (!attestation)
+    throw new CircleError('attestation is required', {
       code: 'MISSING_ATTESTATION',
     })
-  }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
-
-  const messageTransmitter = new ethers.Contract(
-    chainContracts.messageTransmitter,
-    MESSAGE_TRANSMITTER_ABI,
-    signer,
-  )
-
-  const tx = await messageTransmitter.receiveMessage(messageBytes, attestation)
-  const receipt = await tx.wait()
+  const result = await bridge.chain('ethereum', 'call-contract', {
+    contractAddress: chainContracts.messageTransmitter,
+    functionSignature:
+      'function receiveMessage(bytes message, bytes attestation) returns (bool success)',
+    args: JSON.stringify([messageBytes, attestation]),
+  }, chain)
 
   return {
-    txHash: receipt.hash,
+    txHash: result.txHash,
     chain,
-    blockNumber: receipt.blockNumber,
-    success: receipt.status === 1,
+    blockNumber: result.blockNumber,
+    success: result.status === 'success',
   }
 }
 
 /**
- * Replace a pending CCTP message on the source chain.
- *
- * Allows changing the destinationCaller or mintRecipient of an
- * unfinalized message. Requires the original message and attestation.
- * Only the original sender can call this.
- *
- * @param {object} options
- * @param {string} options.chain - Source chain name
- * @param {string} options.originalMessageBytes - Original message bytes
- * @param {string} options.originalAttestation - Original attestation
- * @param {string} [options.newDestinationCaller] - New destination caller (address)
- * @param {string} [options.newMintRecipient] - New mint recipient (address)
- * @param {string} options.privateKey - Wallet private key (must be original sender)
- * @param {string} [options.rpcUrl] - RPC endpoint override
- * @param {object} options.contracts - CONTRACTS from circle.js
- * @returns {{ txHash, chain, blockNumber, newMessageBytes, newMessageHash }}
+ * Replace a pending CCTP message.
  */
 export async function replaceMessage({
   chain,
   originalMessageBytes,
   originalAttestation,
   newDestinationCaller,
-  newMintRecipient,
-  privateKey,
-  rpcUrl,
   contracts,
 }) {
   const chainContracts = contracts[chain]
-  if (!chainContracts) {
-    throw new CircleError(`No CCTP contracts configured for ${chain}`, {
+  if (!chainContracts)
+    throw new CircleError(`No CCTP contracts for ${chain}`, {
       code: 'MISSING_CONTRACTS',
     })
-  }
-
-  if (!originalMessageBytes) {
+  if (!originalMessageBytes)
     throw new CircleError('original-message-bytes is required', {
       code: 'MISSING_MESSAGE_BYTES',
     })
-  }
-  if (!originalAttestation) {
+  if (!originalAttestation)
     throw new CircleError('original-attestation is required', {
       code: 'MISSING_ATTESTATION',
     })
-  }
 
-  const rpc = resolveRpcUrl(chain, rpcUrl)
-  const signer = createSigner(privateKey, rpc)
-
-  const messageTransmitter = new ethers.Contract(
-    chainContracts.messageTransmitter,
-    MESSAGE_TRANSMITTER_ABI,
-    signer,
-  )
-
-  // Build new message body (same as original but with updated fields)
-  // For now, pass empty body to keep original body — the contract
-  // replaces only the caller if newMessageBody is empty.
   const callerBytes32 = newDestinationCaller
     ? addressToBytes32(newDestinationCaller)
-    : ethers.zeroPadValue('0x00', 32)
+    : '0x' + '0'.repeat(64)
 
-  const tx = await messageTransmitter.replaceMessage(
-    originalMessageBytes,
-    originalAttestation,
-    '0x', // empty = keep original body
-    callerBytes32,
-  )
-  const receipt = await tx.wait()
+  const result = await bridge.chain('ethereum', 'call-contract', {
+    contractAddress: chainContracts.messageTransmitter,
+    functionSignature:
+      'function replaceMessage(bytes originalMessage, bytes originalAttestation, bytes newMessageBody, bytes32 newDestinationCaller)',
+    args: JSON.stringify([
+      originalMessageBytes,
+      originalAttestation,
+      '0x', // empty = keep original body
+      callerBytes32,
+    ]),
+  }, chain)
 
   // Extract new MessageSent event
-  let newMessageBytes = null
-  for (const log of receipt.logs) {
-    try {
-      const parsed = messageTransmitter.interface.parseLog({
-        topics: log.topics,
-        data: log.data,
-      })
-      if (parsed && parsed.name === 'MessageSent') {
-        newMessageBytes = parsed.args.message
-        break
-      }
-    } catch {
-      // Not our event
-    }
+  const msgLog = findEvent(
+    result.logs,
+    chainContracts.messageTransmitter,
+    MESSAGE_SENT_TOPIC,
+  )
+  const newMessageBytes = msgLog?.data || null
+
+  let newMessageHash = null
+  if (newMessageBytes) {
+    const hashResult = await bridge.crypto('keccak-256', {
+      data: newMessageBytes,
+    })
+    newMessageHash = hashResult.hash
   }
 
-  const newMessageHash = newMessageBytes ? ethers.keccak256(newMessageBytes) : null
-
   return {
-    txHash: receipt.hash,
+    txHash: result.txHash,
     chain,
-    blockNumber: receipt.blockNumber,
+    blockNumber: result.blockNumber,
     newMessageBytes,
     newMessageHash,
   }
