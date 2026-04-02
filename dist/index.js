@@ -68406,12 +68406,13 @@ function addressToBytes32(address) {
  * Parse a uint256 amount from human-readable to raw units.
  * Reads decimals from the USDC contract.
  */
-async function parseAmount(network, usdcAddress, amount) {
+async function parseAmount(network, usdcAddress, amount, rpcUrl) {
   // Read USDC decimals
   const { result: decimalsStr } = await ethereum.readContract({
     network,
     contract: usdcAddress,
     method: 'function decimals() returns (uint8)',
+    ...(rpcUrl ? { rpcUrl } : {}),
   })
   const decimals = parseInt(decimalsStr, 10) || 6
   // Parse amount with decimals
@@ -68459,6 +68460,7 @@ async function approveBurn({ chain, amount, domains, contracts }) {
  * Returns messageBytes and messageHash for attestation and minting.
  */
 async function burn({
+  rpcUrl,
   chain,
   destinationChain,
   recipient,
@@ -68488,7 +68490,8 @@ async function burn({
   }
 
   const network = chain
-  const parsedAmount = await parseAmount(network, sourceInfo.usdc, amount)
+  const rpc = rpcUrl ? { rpcUrl } : {}
+  const parsedAmount = await parseAmount(network, sourceInfo.usdc, amount, rpcUrl)
   const mintRecipient = addressToBytes32(recipient)
 
   // Approve USDC for TokenMessenger (combined into burn to avoid cross-step nonce races)
@@ -68497,36 +68500,26 @@ async function burn({
     contract: sourceInfo.usdc,
     method: 'function approve(address,uint256) returns (bool)',
     args: [chainContracts.tokenMessenger, parsedAmount],
+    ...rpc,
   })
 
-  // Wait for approve tx to be mined before submitting burn tx
-  // (bridge doesn't manage pending nonces across sequential calls)
-  await new Promise((resolve) => setTimeout(resolve, 3000))
+  // Wait for approve tx to confirm before submitting burn tx.
+  // Ethereum: 12s blocks, Base: 2s blocks.
+  const BLOCK_WAIT = network === 'ethereum' ? 15000 : 3000
+  await new Promise((resolve) => setTimeout(resolve, BLOCK_WAIT))
 
-  let result
-  if (destinationCaller) {
-    // CCTP V2: depositForBurn with explicit destinationCaller
-    const callerBytes32 = addressToBytes32(destinationCaller)
-    const DEFAULT_MAX_FEE = '100000'
-    result = await ethereum.callContract({
-      network,
-      contract: chainContracts.tokenMessenger,
-      method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
-    })
-  } else {
-    // CCTP V2: depositForBurn with destinationCaller, maxFee, minFinalityThreshold.
-    // maxFee: Circle charges a fee for attestation. Default 100000 ($0.10 USDC).
-    // Set maxFee to 0 will cause attestation to be delayed (insufficient_fee).
-    const zeroCaller = '0x0000000000000000000000000000000000000000000000000000000000000000'
-    const DEFAULT_MAX_FEE = '100000' // 0.10 USDC — covers attestation fee
-    result = await ethereum.callContract({
-      network,
-      contract: chainContracts.tokenMessenger,
-      method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-      args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, zeroCaller, DEFAULT_MAX_FEE, '0'],
-    })
-  }
+  const DEFAULT_MAX_FEE = '100000' // 0.10 USDC
+  const callerBytes32 = destinationCaller
+    ? addressToBytes32(destinationCaller)
+    : '0x0000000000000000000000000000000000000000000000000000000000000000'
+
+  const result = await ethereum.callContract({
+    network,
+    contract: chainContracts.tokenMessenger,
+    method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
+    args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
+    ...rpc,
+  })
 
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
@@ -68572,7 +68565,7 @@ async function burn({
 /**
  * Mint USDC on destination chain by calling receiveMessage.
  */
-async function mint({ chain, messageBytes, attestation, contracts }) {
+async function mint({ chain, messageBytes, attestation, contracts, rpcUrl }) {
   const chainContracts = contracts[chain]
   if (!chainContracts) {
     throw new CircleError(`No CCTP contracts configured for ${chain}`, {
@@ -68593,10 +68586,12 @@ async function mint({ chain, messageBytes, attestation, contracts }) {
 
   const network = chain
 
+  const rpc = rpcUrl ? { rpcUrl } : {}
   const result = await ethereum.callContract({
     network,
     contract: chainContracts.messageTransmitter,
     method: 'function receiveMessage(bytes,bytes)',
+    ...rpc,
     args: [messageBytes, attestation],
   })
 
@@ -69150,7 +69145,8 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = lib_core.getInput('chain', { required: true })
   const amount = lib_core.getInput('amount', { required: true })
-  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS })
+  const rpcUrl = lib_core.getInput("rpc-url") || lib_core.getInput("rpc_url") || undefined
+  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS, rpcUrl })
 }
 
 async function runBurn() {
@@ -69159,6 +69155,7 @@ async function runBurn() {
   const recipient = lib_core.getInput('destination-address', { required: true })
   const amount = lib_core.getInput('amount', { required: true })
   const destinationCaller = lib_core.getInput('destination-caller') || undefined
+  const rpcUrl = lib_core.getInput('rpc-url') || lib_core.getInput('rpc_url') || undefined
 
   // Route to Solana implementation for Solana source chains
   const chainInfo = DOMAINS[chain]
@@ -69178,6 +69175,7 @@ async function runBurn() {
     chain,
     destinationChain,
     recipient,
+    rpcUrl,
     amount,
     domains: DOMAINS,
     contracts: CONTRACTS,
@@ -69202,7 +69200,8 @@ async function runMint() {
     })
   }
 
-  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS })
+  const rpcUrl = lib_core.getInput("rpc-url") || lib_core.getInput("rpc_url") || undefined
+  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl })
 }
 
 async function runReplaceMessage() {

@@ -118,7 +118,8 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = core.getInput('chain', { required: true })
   const amount = core.getInput('amount', { required: true })
-  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS })
+  const rpcUrl = core.getInput("rpc-url") || core.getInput("rpc_url") || undefined
+  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS, rpcUrl })
 }
 
 async function runBurn() {
@@ -127,6 +128,7 @@ async function runBurn() {
   const recipient = core.getInput('destination-address', { required: true })
   const amount = core.getInput('amount', { required: true })
   const destinationCaller = core.getInput('destination-caller') || undefined
+  const rpcUrl = core.getInput('rpc-url') || core.getInput('rpc_url') || undefined
 
   // Route to Solana implementation for Solana source chains
   const chainInfo = DOMAINS[chain]
@@ -146,6 +148,7 @@ async function runBurn() {
     chain,
     destinationChain,
     recipient,
+    rpcUrl,
     amount,
     domains: DOMAINS,
     contracts: CONTRACTS,
@@ -170,7 +173,8 @@ async function runMint() {
     })
   }
 
-  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS })
+  const rpcUrl = core.getInput("rpc-url") || core.getInput("rpc_url") || undefined
+  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl })
 }
 
 async function runReplaceMessage() {
