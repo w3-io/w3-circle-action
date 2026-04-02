@@ -69333,8 +69333,11 @@ async function writeSummary(command, result) {
 }
 
 ;// CONCATENATED MODULE: ./src/index.js
-// Entry point. This file rarely needs changes — it just calls run().
+// Entry point. Catches any unhandled rejections to prevent exit code 1.
 
 
-run()
+run().catch((err) => {
+  process.stderr.write(`Unhandled: ${err?.message || err}\n`)
+  process.exitCode = 1
+})
 
