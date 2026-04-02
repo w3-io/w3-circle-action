@@ -96,9 +96,7 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = core.getInput('chain', { required: true })
   const amount = core.getInput('amount', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
-  return approveBurn({ chain, amount, privateKey, rpcUrl, domains: DOMAINS, contracts: CONTRACTS })
+  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS })
 }
 
 async function runBurn() {
@@ -106,8 +104,6 @@ async function runBurn() {
   const destinationChain = core.getInput('destination-chain', { required: true })
   const recipient = core.getInput('destination-address', { required: true })
   const amount = core.getInput('amount', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
   const destinationCaller = core.getInput('destination-caller') || undefined
 
   // Route to Solana implementation for Solana source chains
@@ -118,8 +114,6 @@ async function runBurn() {
       destinationChain,
       recipient,
       amount,
-      privateKey,
-      rpcUrl,
       contracts: CONTRACTS,
       domains: DOMAINS,
       destinationCaller,
@@ -131,8 +125,6 @@ async function runBurn() {
     destinationChain,
     recipient,
     amount,
-    privateKey,
-    rpcUrl,
     domains: DOMAINS,
     contracts: CONTRACTS,
     destinationCaller,
@@ -143,8 +135,6 @@ async function runMint() {
   const chain = core.getInput('chain', { required: true })
   const messageBytes = core.getInput('message-bytes', { required: true })
   const attestation = core.getInput('attestation', { required: true })
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
 
   // Route to Solana implementation for Solana chains
   const chainInfo = DOMAINS[chain]
@@ -153,14 +143,12 @@ async function runMint() {
       chain,
       messageBytes,
       attestation,
-      privateKey,
-      rpcUrl,
       contracts: CONTRACTS,
       domains: DOMAINS,
     })
   }
 
-  return mint({ chain, messageBytes, attestation, privateKey, rpcUrl, contracts: CONTRACTS })
+  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS })
 }
 
 async function runReplaceMessage() {
@@ -168,17 +156,11 @@ async function runReplaceMessage() {
   const originalMessageBytes = core.getInput('original-message-bytes', { required: true })
   const originalAttestation = core.getInput('original-attestation', { required: true })
   const newDestinationCaller = core.getInput('destination-caller') || undefined
-  const newMintRecipient = core.getInput('destination-address') || undefined
-  const privateKey = core.getInput('private-key', { required: true })
-  const rpcUrl = core.getInput('rpc-url') || undefined
   return replaceMessage({
     chain,
     originalMessageBytes,
     originalAttestation,
     newDestinationCaller,
-    newMintRecipient,
-    privateKey,
-    rpcUrl,
     contracts: CONTRACTS,
   })
 }
