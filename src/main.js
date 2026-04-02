@@ -73,9 +73,10 @@ async function runGetAttestation(client) {
 }
 
 async function runWaitForAttestation(client) {
-  const txHash = core.getInput('tx-hash')
-  const sourceDomain = core.getInput('source-domain')
-  const messageHash = core.getInput('message-hash')
+  // Support both hyphenated and underscored input names
+  const txHash = core.getInput('tx-hash') || core.getInput('tx_hash')
+  const sourceDomain = core.getInput('source-domain') || core.getInput('source_domain')
+  const messageHash = core.getInput('message-hash') || core.getInput('message_hash')
   const pollIntervalInput = core.getInput('poll-interval')
   const maxAttemptsInput = core.getInput('max-attempts')
   const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
