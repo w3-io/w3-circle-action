@@ -55,7 +55,7 @@ export async function run() {
     const result = await handler(client)
     core.setOutput('result', JSON.stringify(result))
 
-    writeSummary(command, result)
+    try { writeSummary(command, result) } catch { /* summary is best-effort */ }
   } catch (error) {
     if (error instanceof CircleError) {
       core.setFailed(`Circle error (${error.code}): ${error.message}`)
