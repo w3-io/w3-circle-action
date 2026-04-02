@@ -113,6 +113,14 @@ export async function burn({
   const parsedAmount = await parseAmount(network, sourceInfo.usdc, amount)
   const mintRecipient = addressToBytes32(recipient)
 
+  // Approve USDC for TokenMessenger (combined into burn to avoid nonce races)
+  await ethereum.callContract({
+    network,
+    contract: sourceInfo.usdc,
+    method: 'function approve(address,uint256) returns (bool)',
+    args: [chainContracts.tokenMessenger, parsedAmount],
+  })
+
   let result
   if (destinationCaller) {
     // CCTP V2: depositForBurn with explicit destinationCaller
