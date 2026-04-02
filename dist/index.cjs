@@ -28080,6 +28080,45 @@ async function request(path, body) {
   })
 }
 
+/** GET request (for health checks). */
+async function get(path) {
+  const socketPath = process.env.W3_BRIDGE_SOCKET;
+  const bridgeUrl = process.env.W3_BRIDGE_URL;
+
+  if (!socketPath && !bridgeUrl) {
+    throw new BridgeError('BRIDGE_NOT_AVAILABLE', 'Bridge not configured')
+  }
+
+  const options = socketPath
+    ? { socketPath, path, method: 'GET' }
+    : {
+        hostname: new URL(bridgeUrl).hostname,
+        port: new URL(bridgeUrl).port,
+        path,
+        method: 'GET',
+      };
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          resolve({ raw: data });
+        }
+      });
+    });
+    req.on('error', (err) => {
+      reject(new BridgeError('CONNECTION_ERROR', `Bridge connection failed: ${err.message}`));
+    });
+    req.end();
+  })
+}
+
 // ─── Error ──────────────────────────────────────────────────────────
 
 class BridgeError extends Error {
@@ -28312,6 +28351,19 @@ const solana = {
    */
   generateKeypair() {
     return request('/solana/generate-keypair', {})
+  },
+
+  /**
+   * Get the payer's public key.
+   *
+   * Returns the pubkey of the configured Solana signer (W3_SECRET_SOLANA).
+   * No secret exposed. Use this to derive ATAs and PDAs that include
+   * the payer's pubkey as a seed.
+   *
+   * @returns {{ pubkey: string }} Base58 public key
+   */
+  payerAddress() {
+    return get('/solana/payer-address')
   },
 };
 
@@ -124042,7 +124094,7 @@ function resolveChain(chain, contracts, domains) {
 /**
  * Mint USDC on Solana by calling receiveMessage on MessageTransmitter V2.
  */
-async function mintSolana({ chain, messageBytes, attestation, contracts, domains }) {
+async function mintSolana({ chain, messageBytes, attestation, contracts, domains, rpcUrl }) {
   if (!messageBytes) {
     throw new CircleError('message-bytes is required', { code: 'MISSING_MESSAGE_BYTES' })
   }
@@ -124054,6 +124106,9 @@ async function mintSolana({ chain, messageBytes, attestation, contracts, domains
   const mtId = chainContracts.messageTransmitter;
   const tmmId = chainContracts.tokenMessenger;
   const usdcMint = chainInfo.usdc;
+
+  // Get the payer's pubkey for accounts that reference it
+  const { pubkey: payerPubkey } = await solana.payerAddress();
 
   const { sourceDomain, nonceBytes, burnToken, mintRecipient } = parseMessage(messageBytes);
   const mintRecipientB58 = new PublicKey(mintRecipient).toBase58();
@@ -124101,8 +124156,8 @@ async function mintSolana({ chain, messageBytes, attestation, contracts, domains
   // Account list — order follows Anchor IDL
   const accounts = [
     // receiveMessage core accounts
-    { pubkey: 'PAYER', isSigner: true, isWritable: true }, // filled by bridge
-    { pubkey: 'PAYER', isSigner: true, isWritable: false }, // caller
+    { pubkey: payerPubkey, isSigner: true, isWritable: true },
+    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // caller
     { pubkey: authorityPda.toBase58(), isSigner: false, isWritable: false },
     { pubkey: mtState.toBase58(), isSigner: false, isWritable: false },
     { pubkey: usedNonce.toBase58(), isSigner: false, isWritable: true },
@@ -124167,6 +124222,9 @@ async function burnSolana({
   const usdcMint = chainInfo.usdc;
   const rawAmount = BigInt(Math.round(parseFloat(amount) * 1e6));
 
+  // Get the payer's pubkey for accounts and PDA derivation
+  const { pubkey: payerPubkey } = await solana.payerAddress();
+
   // Recipient: EVM address → bytes32, Solana pubkey → 32 bytes
   let mintRecipientBytes;
   if (recipient.startsWith('0x')) {
@@ -124185,11 +124243,13 @@ async function burnSolana({
   // Generate ephemeral keypair for MessageSent event data
   const { pubkey: eventDataPubkey } = await solana.generateKeypair();
 
-  // Derive PDAs
+  // Derive PDAs using the actual payer pubkey
   const [senderAuth] = findPda(tmmId, [Buffer.from('sender_authority')]);
-  getAta(usdcMint, 'PAYER'); // Will need the actual payer pubkey
-  // For now, we pass PAYER as placeholder — the bridge fills it
-  const [denylist] = findPda(tmmId, [Buffer.from('denylist_account'), Buffer.alloc(32)]); // payer pubkey needed
+  const payerAta = getAta(usdcMint, payerPubkey);
+  const [denylist] = findPda(tmmId, [
+    Buffer.from('denylist_account'),
+    new PublicKey(payerPubkey).toBuffer(),
+  ]);
   const [mtState] = findPda(mtId, [Buffer.from('message_transmitter')]);
   const [tmmState] = findPda(tmmId, [Buffer.from('token_messenger')]);
   const [remoteTmm] = findPda(tmmId, [
@@ -124221,10 +124281,10 @@ async function burnSolana({
 
   // Account list — order follows Anchor IDL
   const accounts = [
-    { pubkey: 'PAYER', isSigner: true, isWritable: false }, // owner
-    { pubkey: 'PAYER', isSigner: true, isWritable: true }, // event_rent_payer
+    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // owner
+    { pubkey: payerPubkey, isSigner: true, isWritable: true }, // event_rent_payer
     { pubkey: senderAuth.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: 'PAYER_ATA', isSigner: false, isWritable: true }, // burn_token_account (filled by bridge)
+    { pubkey: payerAta, isSigner: false, isWritable: true }, // burn_token_account
     { pubkey: denylist.toBase58(), isSigner: false, isWritable: false },
     { pubkey: mtState.toBase58(), isSigner: false, isWritable: true },
     { pubkey: tmmState.toBase58(), isSigner: false, isWritable: false },

@@ -107,7 +107,7 @@ function resolveChain(chain, contracts, domains) {
 /**
  * Mint USDC on Solana by calling receiveMessage on MessageTransmitter V2.
  */
-export async function mintSolana({ chain, messageBytes, attestation, contracts, domains }) {
+export async function mintSolana({ chain, messageBytes, attestation, contracts, domains, rpcUrl }) {
   if (!messageBytes) {
     throw new CircleError('message-bytes is required', { code: 'MISSING_MESSAGE_BYTES' })
   }
@@ -119,6 +119,9 @@ export async function mintSolana({ chain, messageBytes, attestation, contracts, 
   const mtId = chainContracts.messageTransmitter
   const tmmId = chainContracts.tokenMessenger
   const usdcMint = chainInfo.usdc
+
+  // Get the payer's pubkey for accounts that reference it
+  const { pubkey: payerPubkey } = await solana.payerAddress()
 
   const { sourceDomain, nonceBytes, burnToken, mintRecipient } = parseMessage(messageBytes)
   const mintRecipientB58 = new PublicKey(mintRecipient).toBase58()
@@ -166,8 +169,8 @@ export async function mintSolana({ chain, messageBytes, attestation, contracts, 
   // Account list — order follows Anchor IDL
   const accounts = [
     // receiveMessage core accounts
-    { pubkey: 'PAYER', isSigner: true, isWritable: true }, // filled by bridge
-    { pubkey: 'PAYER', isSigner: true, isWritable: false }, // caller
+    { pubkey: payerPubkey, isSigner: true, isWritable: true },
+    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // caller
     { pubkey: authorityPda.toBase58(), isSigner: false, isWritable: false },
     { pubkey: mtState.toBase58(), isSigner: false, isWritable: false },
     { pubkey: usedNonce.toBase58(), isSigner: false, isWritable: true },
@@ -232,6 +235,9 @@ export async function burnSolana({
   const usdcMint = chainInfo.usdc
   const rawAmount = BigInt(Math.round(parseFloat(amount) * 1e6))
 
+  // Get the payer's pubkey for accounts and PDA derivation
+  const { pubkey: payerPubkey } = await solana.payerAddress()
+
   // Recipient: EVM address → bytes32, Solana pubkey → 32 bytes
   let mintRecipientBytes
   if (recipient.startsWith('0x')) {
@@ -250,11 +256,13 @@ export async function burnSolana({
   // Generate ephemeral keypair for MessageSent event data
   const { pubkey: eventDataPubkey } = await solana.generateKeypair()
 
-  // Derive PDAs
+  // Derive PDAs using the actual payer pubkey
   const [senderAuth] = findPda(tmmId, [Buffer.from('sender_authority')])
-  const payerAta = getAta(usdcMint, 'PAYER') // Will need the actual payer pubkey
-  // For now, we pass PAYER as placeholder — the bridge fills it
-  const [denylist] = findPda(tmmId, [Buffer.from('denylist_account'), Buffer.alloc(32)]) // payer pubkey needed
+  const payerAta = getAta(usdcMint, payerPubkey)
+  const [denylist] = findPda(tmmId, [
+    Buffer.from('denylist_account'),
+    new PublicKey(payerPubkey).toBuffer(),
+  ])
   const [mtState] = findPda(mtId, [Buffer.from('message_transmitter')])
   const [tmmState] = findPda(tmmId, [Buffer.from('token_messenger')])
   const [remoteTmm] = findPda(tmmId, [
@@ -286,10 +294,10 @@ export async function burnSolana({
 
   // Account list — order follows Anchor IDL
   const accounts = [
-    { pubkey: 'PAYER', isSigner: true, isWritable: false }, // owner
-    { pubkey: 'PAYER', isSigner: true, isWritable: true }, // event_rent_payer
+    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // owner
+    { pubkey: payerPubkey, isSigner: true, isWritable: true }, // event_rent_payer
     { pubkey: senderAuth.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: 'PAYER_ATA', isSigner: false, isWritable: true }, // burn_token_account (filled by bridge)
+    { pubkey: payerAta, isSigner: false, isWritable: true }, // burn_token_account
     { pubkey: denylist.toBase58(), isSigner: false, isWritable: false },
     { pubkey: mtState.toBase58(), isSigner: false, isWritable: true },
     { pubkey: tmmState.toBase58(), isSigner: false, isWritable: false },
