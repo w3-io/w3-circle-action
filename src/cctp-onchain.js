@@ -143,9 +143,10 @@ export async function burn({
     ...rpc,
   })
 
-  console.log('DEBUG bridge response keys:', Object.keys(result))
-  console.log('DEBUG txHash:', result.txHash)
-  console.log('DEBUG transactionId:', result.transactionId)
+  // Debug: dump ALL keys in bridge response to stderr
+  process.stderr.write('BRIDGE_KEYS=' + JSON.stringify(Object.keys(result)) + '\n')
+  process.stderr.write('BRIDGE_TXHASH=' + String(result.txHash) + '\n')
+  process.stderr.write('BRIDGE_OK=' + String(result.ok) + '\n')
 
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
