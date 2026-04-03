@@ -12,8 +12,24 @@
  *   5. replace-message: Replace pending message (destinationCaller/recipient)
  */
 
-import { ethereum, crypto } from '../lib/bridge.js'
+import { bridge } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
+
+// Thin wrappers over action-core bridge to match the existing calling convention.
+const ethereum = {
+  readContract({ network, contract, method, args, abi, rpcUrl }) {
+    return bridge.chain('ethereum', 'read-contract', { contract, method, args, abi, rpcUrl }, network)
+  },
+  callContract({ network, contract, method, args, abi, value, rpcUrl, gasLimit }) {
+    return bridge.chain('ethereum', 'call-contract', { contract, method, args, abi, value, rpcUrl, gasLimit }, network)
+  },
+}
+
+const crypto = {
+  keccak256({ data }) {
+    return bridge.crypto('keccak256', { data })
+  },
+}
 
 /**
  * Pad an EVM address to bytes32 for CCTP.
@@ -143,10 +159,6 @@ export async function burn({
     ...rpc,
   })
 
-  console.log('DEBUG bridge response keys:', Object.keys(result))
-  console.log('DEBUG txHash:', result.txHash)
-  console.log('DEBUG transactionId:', result.transactionId)
-
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
   // MessageSent event topic: keccak256("MessageSent(bytes)")
@@ -180,7 +192,7 @@ export async function burn({
     txHash: result.txHash || result.transactionHash || result.signature,
     sourceDomain: sourceInfo.domain,
     messageBytes,
-    messageHash: '0x' + messageHash,
+    messageHash: messageHash.startsWith('0x') ? messageHash : '0x' + messageHash,
     amount,
     source: chain,
     destination: destinationChain,
@@ -283,7 +295,7 @@ export async function replaceMessage({
   let newMessageHash = null
   if (newMessageBytes) {
     const { hash } = await crypto.keccak256({ data: newMessageBytes })
-    newMessageHash = '0x' + hash
+    newMessageHash = hash.startsWith('0x') ? hash : '0x' + hash
   }
 
   return {

@@ -60715,6 +60715,13 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:events"
 
 /***/ }),
 
+/***/ 7067:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:http");
+
+/***/ }),
+
 /***/ 7075:
 /***/ ((module) => {
 
@@ -67063,6 +67070,64 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /******/ }
 /******/ 
 /************************************************************************/
+/******/ /* webpack/runtime/create fake namespace object */
+/******/ (() => {
+/******/ 	var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
+/******/ 	var leafPrototypes;
+/******/ 	// create a fake namespace object
+/******/ 	// mode & 1: value is a module id, require it
+/******/ 	// mode & 2: merge all properties of value into the ns
+/******/ 	// mode & 4: return value when already ns object
+/******/ 	// mode & 16: return value when it's Promise-like
+/******/ 	// mode & 8|1: behave like require
+/******/ 	__nccwpck_require__.t = function(value, mode) {
+/******/ 		if(mode & 1) value = this(value);
+/******/ 		if(mode & 8) return value;
+/******/ 		if(typeof value === 'object' && value) {
+/******/ 			if((mode & 4) && value.__esModule) return value;
+/******/ 			if((mode & 16) && typeof value.then === 'function') return value;
+/******/ 		}
+/******/ 		var ns = Object.create(null);
+/******/ 		__nccwpck_require__.r(ns);
+/******/ 		var def = {};
+/******/ 		leafPrototypes = leafPrototypes || [null, getProto({}), getProto([]), getProto(getProto)];
+/******/ 		for(var current = mode & 2 && value; typeof current == 'object' && !~leafPrototypes.indexOf(current); current = getProto(current)) {
+/******/ 			Object.getOwnPropertyNames(current).forEach((key) => (def[key] = () => (value[key])));
+/******/ 		}
+/******/ 		def['default'] = () => (value);
+/******/ 		__nccwpck_require__.d(ns, def);
+/******/ 		return ns;
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/define property getters */
+/******/ (() => {
+/******/ 	// define getter functions for harmony exports
+/******/ 	__nccwpck_require__.d = (exports, definition) => {
+/******/ 		for(var key in definition) {
+/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 			}
+/******/ 		}
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/hasOwnProperty shorthand */
+/******/ (() => {
+/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/make namespace object */
+/******/ (() => {
+/******/ 	// define __esModule on exports
+/******/ 	__nccwpck_require__.r = (exports) => {
+/******/ 		if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 			Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 		}
+/******/ 		Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 	};
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/node module decorator */
 /******/ (() => {
 /******/ 	__nccwpck_require__.nmd = (module) => {
@@ -67081,6 +67146,429 @@ var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var lib_core = __nccwpck_require__(7484);
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/input.js
+
+/**
+ * Read an input and parse it as JSON. Returns the parsed value.
+ * Throws if the input is missing (when required) or not valid JSON.
+ */
+function parseJsonInput(name, options) {
+    const raw = core.getInput(name, options);
+    if (!raw)
+        return undefined;
+    return JSON.parse(raw);
+}
+/**
+ * Read a required input. Throws if missing.
+ */
+function requireInput(name) {
+    return core.getInput(name, { required: true });
+}
+/**
+ * Read an optional input. Returns undefined if empty.
+ */
+function getOptionalInput(name) {
+    return core.getInput(name) || undefined;
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/output.js
+
+/**
+ * Set a JSON output. Serializes exactly once — prevents double-encoding.
+ *
+ * If the value is already a string, it's set directly.
+ * If it's an object/array/number/boolean, it's JSON.stringified once.
+ */
+function setJsonOutput(name, value) {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    lib_core.setOutput(name, serialized);
+}
+/**
+ * Set multiple outputs at once.
+ */
+function setOutputs(outputs) {
+    for (const [key, value] of Object.entries(outputs)) {
+        if (value != null) {
+            setJsonOutput(key, value);
+        }
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/error.js
+
+/**
+ * Structured error with code, message, and optional details.
+ */
+class error_W3ActionError extends Error {
+    code;
+    statusCode;
+    details;
+    constructor(code, message, options) {
+        super(message);
+        this.name = "W3ActionError";
+        this.code = code;
+        this.statusCode = options?.statusCode;
+        this.details = options?.details;
+    }
+}
+/**
+ * Top-level error handler for action entry points.
+ *
+ * Usage:
+ *   main().catch(handleError);
+ */
+function handleError(error) {
+    if (error instanceof error_W3ActionError) {
+        lib_core.setOutput("error-code", error.code);
+        if (error.statusCode)
+            lib_core.setOutput("status-code", error.statusCode);
+        lib_core.setFailed(`[${error.code}] ${error.message}`);
+    }
+    else if (error instanceof Error) {
+        lib_core.setFailed(error.message);
+    }
+    else {
+        lib_core.setFailed(String(error));
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/http.js
+
+/**
+ * Make an HTTP request with JSON body. Returns parsed JSON response.
+ *
+ * For partner API clients that don't need the bridge.
+ */
+async function request(url, options = {}) {
+    const { method = "GET", headers = {}, body, timeout = 30000 } = options;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+                ...headers,
+            },
+            body: body ? JSON.stringify(body) : undefined,
+            signal: controller.signal,
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            throw new W3ActionError("HTTP_ERROR", `${response.status}: ${text}`, {
+                statusCode: response.status,
+            });
+        }
+        return (await response.json());
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/command.js
+
+
+/**
+ * Create a command router that dispatches on the `command` input.
+ *
+ * Usage:
+ *   const router = createCommandRouter({
+ *     "create-payment": async () => { ... },
+ *     "get-payment": async () => { ... },
+ *   });
+ *   router();  // reads `command` input, dispatches, handles errors
+ */
+function createCommandRouter(commands) {
+    return () => {
+        const command = lib_core.getInput("command", { required: true });
+        const handler = commands[command];
+        if (!handler) {
+            const available = Object.keys(commands).join(", ");
+            lib_core.setFailed(`Unknown command: '${command}'. Available: ${available}`);
+            return;
+        }
+        handler().catch(handleError);
+    };
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/bridge.js
+/**
+ * W3 Syscall Bridge client.
+ *
+ * The bridge is an HTTP server running on a Unix socket (production)
+ * or TCP port (macOS dev fallback), started per-step by the Docker
+ * backend. It provides access to chain operations, cryptographic
+ * primitives, and protocol-managed secrets without bundling SDKs
+ * in the action container.
+ *
+ * Connection is automatic:
+ *   - $W3_BRIDGE_SOCKET → Unix socket (production)
+ *   - $W3_BRIDGE_URL    → TCP URL (macOS Docker Desktop fallback)
+ *
+ * Usage:
+ *   import { bridge } from "@w3-io/action-core";
+ *
+ *   const balance = await bridge.chain("ethereum", "get-balance", {
+ *     address: "0x...",
+ *   });
+ *
+ *   const hash = await bridge.crypto("keccak-256", { data: "0xdeadbeef" });
+ */
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+function resolveEndpoint() {
+    const bridgeUrl = process.env.W3_BRIDGE_URL;
+    if (bridgeUrl) {
+        return { url: bridgeUrl };
+    }
+    const socketPath = process.env.W3_BRIDGE_SOCKET ?? "/var/run/w3/bridge.sock";
+    return { url: "http://localhost", socketPath };
+}
+async function bridgeRequest(path, body) {
+    const { url, socketPath } = resolveEndpoint();
+    if (socketPath) {
+        const http = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 7067, 19));
+        return new Promise((resolve, reject) => {
+            const payload = body ? JSON.stringify(body) : undefined;
+            const req = http.request({
+                socketPath,
+                path,
+                method: body ? "POST" : "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(payload
+                        ? { "Content-Length": Buffer.byteLength(payload) }
+                        : {}),
+                },
+            }, (res) => {
+                let data = "";
+                res.on("data", (chunk) => (data += chunk));
+                res.on("end", () => {
+                    if (!res.statusCode || res.statusCode >= 400) {
+                        try {
+                            const err = JSON.parse(data);
+                            reject(new error_W3ActionError(err.code ?? "BRIDGE_ERROR", err.error ?? `Bridge returned ${res.statusCode}`, { statusCode: res.statusCode, details: err }));
+                        }
+                        catch {
+                            reject(new error_W3ActionError("BRIDGE_ERROR", data || `HTTP ${res.statusCode}`, { statusCode: res.statusCode }));
+                        }
+                        return;
+                    }
+                    try {
+                        resolve(JSON.parse(data));
+                    }
+                    catch {
+                        resolve(data);
+                    }
+                });
+            });
+            req.on("error", (err) => reject(new error_W3ActionError("BRIDGE_UNAVAILABLE", err.message)));
+            if (payload)
+                req.write(payload);
+            req.end();
+        });
+    }
+    // TCP transport via fetch
+    const fullUrl = `${url}${path}`;
+    const init = {
+        method: body ? "POST" : "GET",
+        headers: { "Content-Type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+    };
+    const res = await fetch(fullUrl, init);
+    const text = await res.text();
+    if (!res.ok) {
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        }
+        catch {
+            // not JSON
+        }
+        throw new error_W3ActionError(parsed?.code ?? "BRIDGE_ERROR", parsed?.error ?? text ?? `Bridge returned ${res.status}`, { statusCode: res.status, details: parsed });
+    }
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return text;
+    }
+}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+async function health() {
+    try {
+        const res = (await bridgeRequest("/health"));
+        return res.ok === true;
+    }
+    catch {
+        return false;
+    }
+}
+async function chain(chainName, action, params, network) {
+    return (await bridgeRequest(`/${chainName}/${action}`, {
+        network: network ?? chainName,
+        params,
+    }));
+}
+async function bridge_crypto(action, params) {
+    return (await bridgeRequest(`/crypto/${action}`, {
+        params,
+    }));
+}
+/**
+ * The bridge client.
+ *
+ *   import { bridge } from "@w3-io/action-core";
+ *
+ *   const bal = await bridge.chain("ethereum", "get-balance", { address });
+ *   const hash = await bridge.crypto("keccak-256", { data: "0x..." });
+ *   const ok = await bridge.health();
+ */
+const bridge = {
+    health,
+    chain,
+    crypto: bridge_crypto,
+};
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/summary.js
+
+/**
+ * Write a job summary safely.
+ *
+ * Wraps `@actions/core` summary with proper `await` and error handling.
+ * The W3 runner sets GITHUB_STEP_SUMMARY and mounts a writable file,
+ * so this works on both GitHub Actions and W3. If the summary file is
+ * unavailable (local dev, CI without summary support), the write is
+ * silently skipped.
+ *
+ * Usage:
+ *   await writeSummary("My Action: deposit", [
+ *     ["Amount", "1000 USDC"],
+ *     ["TX", "`0xabc...`"],
+ *   ]);
+ *
+ *   await writeSummary("My Action: query", result);
+ */
+async function writeSummary(heading, content) {
+    try {
+        lib_core.summary.addHeading(heading, 3);
+        if (typeof content === "string") {
+            lib_core.summary.addRaw(content);
+        }
+        else if (Array.isArray(content)) {
+            // Key-value pairs rendered as markdown
+            for (const [key, value] of content) {
+                lib_core.summary.addRaw(`**${key}:** ${value}\n\n`);
+            }
+        }
+        else {
+            lib_core.summary.addCodeBlock(JSON.stringify(content, null, 2), "json");
+        }
+        await lib_core.summary.write();
+    }
+    catch {
+        // Silently skip — environment may not support job summaries
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/test.js
+/**
+ * Test utilities for W3 actions.
+ *
+ * Mocks @actions/core so you can test command handlers in isolation
+ * without running the full GitHub Actions runtime.
+ */
+let _inputs = {};
+let _outputs = new Map();
+let _failed = null;
+function mockAction(inputs) {
+    _inputs = inputs;
+    _outputs = new Map();
+    _failed = null;
+    for (const [key, value] of Object.entries(inputs)) {
+        const envKey = `INPUT_${key.replace(/-/g, "_").toUpperCase()}`;
+        process.env[envKey] = value;
+    }
+}
+function getOutput(name) {
+    return _outputs.get(name);
+}
+function expectOutput(name, validator) {
+    const value = _outputs.get(name);
+    if (value === undefined) {
+        throw new Error(`Expected output "${name}" to be set. Got: ${JSON.stringify(Object.fromEntries(_outputs))}`);
+    }
+    if (validator && !validator(value)) {
+        throw new Error(`Output "${name}" failed validation. Value: ${value}`);
+    }
+}
+function expectFailed(pattern) {
+    if (_failed === null) {
+        throw new Error("Expected action to fail, but it succeeded");
+    }
+    if (pattern) {
+        const matches = typeof pattern === "string"
+            ? _failed.includes(pattern)
+            : pattern.test(_failed);
+        if (!matches) {
+            throw new Error(`Expected failure matching "${pattern}", got: "${_failed}"`);
+        }
+    }
+}
+function expectSuccess() {
+    if (_failed !== null) {
+        throw new Error(`Expected action to succeed, but it failed: "${_failed}"`);
+    }
+}
+function cleanupMock() {
+    for (const key of Object.keys(process.env)) {
+        if (key.startsWith("INPUT_")) {
+            delete process.env[key];
+        }
+    }
+    _inputs = {};
+    _outputs = new Map();
+    _failed = null;
+}
+function createMockCore() {
+    const noopChain = () => ({ addRaw: noopChain, addHeading: noopChain, addCodeBlock: noopChain, write: async () => { } });
+    return {
+        getInput: (name, opts) => {
+            const value = _inputs[name] ?? "";
+            if (opts?.required && !value) {
+                throw new Error(`Input required and not supplied: ${name}`);
+            }
+            return value;
+        },
+        setOutput: (name, value) => {
+            _outputs.set(name, typeof value === "string" ? value : JSON.stringify(value));
+        },
+        setFailed: (message) => {
+            _failed = message;
+        },
+        info: (_msg) => { },
+        warning: (_msg) => { },
+        error: (_msg) => { },
+        debug: (_msg) => { },
+        summary: { addHeading: noopChain, addRaw: noopChain, addCodeBlock: noopChain, write: async () => { } },
+    };
+}
+
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/index.js
+
+
+
+
+
+
+
+
+
 ;// CONCATENATED MODULE: ./src/circle.js
 /**
  * Circle API client.
@@ -67833,548 +68321,6 @@ class CircleClient {
   }
 }
 
-;// CONCATENATED MODULE: external "node:http"
-const external_node_http_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:http");
-;// CONCATENATED MODULE: ./lib/bridge.js
-/**
- * @w3-io/bridge — W3 syscall bridge SDK.
- *
- * Provides chain operations (Ethereum, Bitcoin, Solana) and crypto
- * primitives to Docker-based actions via the W3 bridge socket.
- *
- * The bridge socket is mounted into every container at the path
- * specified by the W3_BRIDGE_SOCKET environment variable (or
- * available via TCP at W3_BRIDGE_URL for macOS dev).
- *
- * Zero dependencies — uses Node.js built-in http module.
- *
- * @example
- * ```js
- * import { bridge } from '@w3-io/bridge'
- *
- * const { result } = await bridge.ethereum.readContract({
- *   network: 'base',
- *   contract: '0xd1b1...',
- *   method: 'function balanceOf(address) returns (uint256)',
- *   args: ['0x51AaE...'],
- * })
- * ```
- */
-
-
-
-// ─── Transport ──────────────────────────────────────────────────────
-
-/**
- * Make an HTTP request to the bridge.
- *
- * Supports Unix socket (production) and TCP (macOS dev fallback).
- * Automatically resolves the bridge endpoint from environment variables.
- *
- * @param {string} path - URL path (e.g., "/ethereum/read-contract")
- * @param {object} body - JSON request body
- * @returns {Promise<object>} Parsed JSON response
- */
-async function request(path, body) {
-  const socketPath = process.env.W3_BRIDGE_SOCKET
-  const bridgeUrl = process.env.W3_BRIDGE_URL
-
-  if (!socketPath && !bridgeUrl) {
-    throw new BridgeError(
-      'BRIDGE_NOT_AVAILABLE',
-      'Neither W3_BRIDGE_SOCKET nor W3_BRIDGE_URL is set. ' +
-        'This SDK requires the W3 bridge — run inside a W3 workflow step.',
-    )
-  }
-
-  const payload = JSON.stringify(body)
-
-  const options = socketPath
-    ? {
-        socketPath,
-        path,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      }
-    : {
-        hostname: new URL(bridgeUrl).hostname,
-        port: new URL(bridgeUrl).port,
-        path,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      }
-
-  return new Promise((resolve, reject) => {
-    const req = external_node_http_namespaceObject.request(options, (res) => {
-      let data = ''
-      res.on('data', (chunk) => {
-        data += chunk
-      })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.ok === false) {
-            reject(
-              new BridgeError(
-                parsed.code || 'BRIDGE_ERROR',
-                parsed.error || 'Unknown bridge error',
-              ),
-            )
-          } else {
-            resolve(parsed)
-          }
-        } catch {
-          reject(new BridgeError('PARSE_ERROR', `Invalid JSON response: ${data.slice(0, 200)}`))
-        }
-      })
-    })
-
-    req.on('error', (err) => {
-      reject(new BridgeError('CONNECTION_ERROR', `Bridge connection failed: ${err.message}`))
-    })
-
-    req.write(payload)
-    req.end()
-  })
-}
-
-/** GET request (for health checks). */
-async function get(path) {
-  const socketPath = process.env.W3_BRIDGE_SOCKET
-  const bridgeUrl = process.env.W3_BRIDGE_URL
-
-  if (!socketPath && !bridgeUrl) {
-    throw new BridgeError('BRIDGE_NOT_AVAILABLE', 'Bridge not configured')
-  }
-
-  const options = socketPath
-    ? { socketPath, path, method: 'GET' }
-    : {
-        hostname: new URL(bridgeUrl).hostname,
-        port: new URL(bridgeUrl).port,
-        path,
-        method: 'GET',
-      }
-
-  return new Promise((resolve, reject) => {
-    const req = external_node_http_namespaceObject.request(options, (res) => {
-      let data = ''
-      res.on('data', (chunk) => {
-        data += chunk
-      })
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(data))
-        } catch {
-          resolve({ raw: data })
-        }
-      })
-    })
-    req.on('error', (err) => {
-      reject(new BridgeError('CONNECTION_ERROR', `Bridge connection failed: ${err.message}`))
-    })
-    req.end()
-  })
-}
-
-// ─── Error ──────────────────────────────────────────────────────────
-
-class BridgeError extends Error {
-  constructor(code, message) {
-    super(message)
-    this.name = 'BridgeError'
-    this.code = code
-  }
-}
-
-// ─── Chain helpers ──────────────────────────────────────────────────
-
-function chainRequest(chain, action, network, params) {
-  return request(`/${chain}/${action}`, { network, params })
-}
-
-// ─── Ethereum ───────────────────────────────────────────────────────
-
-const ethereum = {
-  /** Read a contract view function. */
-  readContract({ network, contract, method, args, abi, rpcUrl }) {
-    return chainRequest('ethereum', 'read-contract', network, {
-      contract,
-      method,
-      args,
-      abi,
-      rpcUrl,
-    })
-  },
-
-  /** Call a state-changing contract function (requires signer). */
-  callContract({ network, contract, method, args, abi, value, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'call-contract', network, {
-      contract,
-      method,
-      args,
-      abi,
-      value,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-
-  /** Get ETH balance. */
-  getBalance({ network, address, rpcUrl }) {
-    return chainRequest('ethereum', 'get-balance', network, { address, rpcUrl })
-  },
-
-  /** Get ERC-20 token balance. */
-  getTokenBalance({ network, token, address, rpcUrl }) {
-    return chainRequest('ethereum', 'get-token-balance', network, { token, address, rpcUrl })
-  },
-
-  /** Get ERC-20 allowance. */
-  getTokenAllowance({ network, token, owner, spender, rpcUrl }) {
-    return chainRequest('ethereum', 'get-token-allowance', network, {
-      token,
-      owner,
-      spender,
-      rpcUrl,
-    })
-  },
-
-  /** Transfer ETH. */
-  transfer({ network, to, value, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'transfer', network, { to, value, rpcUrl, gasLimit })
-  },
-
-  /** Transfer ERC-20 tokens. */
-  transferToken({ network, token, to, amount, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'transfer-token', network, {
-      token,
-      to,
-      amount,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-
-  /** Approve ERC-20 spending. */
-  approveToken({ network, token, spender, amount, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'approve-token', network, {
-      token,
-      spender,
-      amount,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-
-  /** Send raw transaction with calldata. */
-  sendTransaction({ network, to, data, value, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'send-transaction', network, {
-      to,
-      data,
-      value,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-
-  /** Deploy a contract from bytecode. */
-  deployContract({ network, bytecode, args, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'deploy-contract', network, {
-      bytecode,
-      args,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-
-  /** Get transaction receipt. */
-  getTransaction({ network, hash, rpcUrl }) {
-    return chainRequest('ethereum', 'get-transaction', network, { hash, rpcUrl })
-  },
-
-  /** Query contract event logs. */
-  getEvents({ network, address, topics, fromBlock, toBlock, rpcUrl }) {
-    return chainRequest('ethereum', 'get-events', network, {
-      address,
-      topics,
-      fromBlock,
-      toBlock,
-      rpcUrl,
-    })
-  },
-
-  /** Resolve ENS name. */
-  resolveName({ network, name, rpcUrl }) {
-    return chainRequest('ethereum', 'resolve-name', network, { name, rpcUrl })
-  },
-
-  /** Wait for transaction confirmation. */
-  waitForTransaction({ network, hash, confirmations, rpcUrl }) {
-    return chainRequest('ethereum', 'wait-for-transaction', network, {
-      hash,
-      confirmations,
-      rpcUrl,
-    })
-  },
-
-  /** Get ERC-721 NFT owner. */
-  getNftOwner({ network, token, tokenId, rpcUrl }) {
-    return chainRequest('ethereum', 'get-nft-owner', network, { token, tokenId, rpcUrl })
-  },
-
-  /** Transfer ERC-721 NFT. */
-  transferNft({ network, token, tokenId, to, rpcUrl, gasLimit }) {
-    return chainRequest('ethereum', 'transfer-nft', network, {
-      token,
-      tokenId,
-      to,
-      rpcUrl,
-      gasLimit,
-    })
-  },
-}
-
-// ─── Bitcoin ────────────────────────────────────────────────────────
-
-const bitcoin = {
-  /** Get BTC balance. */
-  getBalance({ network, address }) {
-    return chainRequest('bitcoin', 'get-balance', network, { address })
-  },
-
-  /** Get UTXOs. */
-  getUtxos({ network, address }) {
-    return chainRequest('bitcoin', 'get-utxos', network, { address })
-  },
-
-  /** Get transaction details. */
-  getTransaction({ network, txid }) {
-    return chainRequest('bitcoin', 'get-transaction', network, { txid })
-  },
-
-  /** Get current fee rate estimates. */
-  getFeeRate({ network }) {
-    return chainRequest('bitcoin', 'get-fee-rate', network, {})
-  },
-
-  /** Send BTC. */
-  send({ network, to, amount, feeRate }) {
-    return chainRequest('bitcoin', 'send', network, { to, amount, feeRate })
-  },
-
-  /** Wait for transaction confirmation. */
-  waitForTransaction({ network, txid, confirmations }) {
-    return chainRequest('bitcoin', 'wait-for-transaction', network, { txid, confirmations })
-  },
-}
-
-// ─── Solana ─────────────────────────────────────────────────────────
-
-const solana = {
-  /** Get SOL balance. */
-  getBalance({ network, address, rpcUrl }) {
-    return chainRequest('solana', 'get-balance', network, { address, rpcUrl })
-  },
-
-  /** Get SPL token balance. */
-  getTokenBalance({ network, address, mint, rpcUrl }) {
-    return chainRequest('solana', 'get-token-balance', network, { address, mint, rpcUrl })
-  },
-
-  /** Get account data. */
-  getAccount({ network, address, rpcUrl }) {
-    return chainRequest('solana', 'get-account', network, { address, rpcUrl })
-  },
-
-  /** List SPL token accounts. */
-  getTokenAccounts({ network, owner, rpcUrl }) {
-    return chainRequest('solana', 'get-token-accounts', network, { owner, rpcUrl })
-  },
-
-  /** Transfer SOL. */
-  transfer({ network, to, amount, rpcUrl }) {
-    return chainRequest('solana', 'transfer', network, { to, amount, rpcUrl })
-  },
-
-  /** Transfer SPL tokens. */
-  transferToken({ network, mint, to, amount, rpcUrl }) {
-    return chainRequest('solana', 'transfer-token', network, { mint, to, amount, rpcUrl })
-  },
-
-  /**
-   * Invoke a Solana program instruction.
-   *
-   * @param {string[]} [ephemeralSignerPubkeys] - Pubkeys of ephemeral keypairs
-   *   (from `generateKeypair`) to include as additional transaction signers.
-   *   Only the specified keypairs are included — not all generated ones.
-   */
-  callProgram({ network, programId, accounts, data, rpcUrl, ephemeralSignerPubkeys }) {
-    return chainRequest('solana', 'call-program', network, {
-      programId,
-      accounts,
-      data,
-      rpcUrl,
-      ephemeralSignerPubkeys,
-    })
-  },
-
-  /** Get transaction details. */
-  getTransaction({ network, signature, rpcUrl }) {
-    return chainRequest('solana', 'get-transaction', network, { signature, rpcUrl })
-  },
-
-  /** Wait for transaction confirmation. */
-  waitForTransaction({ network, signature, rpcUrl }) {
-    return chainRequest('solana', 'wait-for-transaction', network, { signature, rpcUrl })
-  },
-
-  /**
-   * Generate an ephemeral keypair for use as an additional signer.
-   *
-   * The private key is held by the protocol — only the public key
-   * is returned. When `callProgram` is called, all generated keypairs
-   * are automatically included as transaction signers.
-   *
-   * Used for Solana programs that require non-PDA signer accounts
-   * (e.g., Anchor `init` for event data accounts in CCTP).
-   *
-   * @returns {{ pubkey: string }} Base58 public key
-   */
-  generateKeypair() {
-    return request('/solana/generate-keypair', {})
-  },
-
-  /**
-   * Get the payer's public key.
-   *
-   * Returns the pubkey of the configured Solana signer (W3_SECRET_SOLANA).
-   * No secret exposed. Use this to derive ATAs and PDAs that include
-   * the payer's pubkey as a seed.
-   *
-   * @returns {{ pubkey: string }} Base58 public key
-   */
-  payerAddress() {
-    return get('/solana/payer-address')
-  },
-}
-
-// ─── Crypto ─────────────────────────────────────────────────────────
-
-const bridge_crypto = {
-  /** Keccak-256 hash. */
-  keccak256({ data }) {
-    return request('/crypto/keccak256', { params: { data } })
-  },
-
-  /** AES-256-GCM encrypt. */
-  aesEncrypt({ key, data }) {
-    return request('/crypto/aes-encrypt', { params: { key, data } })
-  },
-
-  /** AES-256-GCM decrypt. */
-  aesDecrypt({ key, data }) {
-    return request('/crypto/aes-decrypt', { params: { key, data } })
-  },
-
-  /** Ed25519 sign. */
-  ed25519Sign({ key, data }) {
-    return request('/crypto/ed25519-sign', { params: { key, data } })
-  },
-
-  /** Ed25519 verify. */
-  ed25519Verify({ key, data, signature }) {
-    return request('/crypto/ed25519-verify', { params: { key, data, signature } })
-  },
-
-  /** Ed25519 public key from private key. */
-  ed25519PublicKey({ key }) {
-    return request('/crypto/ed25519-public-key', { params: { key } })
-  },
-
-  /** HKDF key derivation. */
-  hkdf({ key, salt, info, length }) {
-    return request('/crypto/hkdf', { params: { key, salt, info, length } })
-  },
-
-  /** JWT sign. */
-  jwtSign({ algorithm, key, payload, expiry }) {
-    return request('/crypto/jwt-sign', { params: { algorithm, key, payload, expiry } })
-  },
-
-  /** JWT verify. */
-  jwtVerify({ algorithm, key, token }) {
-    return request('/crypto/jwt-verify', { params: { algorithm, key, token } })
-  },
-
-  /** TOTP generate/verify. */
-  totp({ key, digits, period, algorithm, time }) {
-    return request('/crypto/totp', { params: { key, digits, period, algorithm, time } })
-  },
-}
-
-// ─── Health ─────────────────────────────────────────────────────────
-
-/** Check bridge health. */
-function health() {
-  return get('/health')
-}
-
-/** Send a heartbeat to keep the step alive during long operations. */
-function heartbeat() {
-  return request('/heartbeat', {})
-}
-
-/**
- * Start a background heartbeat interval.
- *
- * Returns a function to stop the heartbeat. Call this at the
- * start of long-running operations and stop it when done.
- *
- * @param {number} [intervalMs=10000] - Heartbeat interval in milliseconds
- * @returns {() => void} Stop function
- */
-function startHeartbeat(intervalMs = 10_000) {
-  const timer = setInterval(() => {
-    heartbeat().catch(() => {
-      // Swallow errors — heartbeat is best-effort
-    })
-  }, intervalMs)
-  // Don't keep the process alive just for heartbeats
-  timer.unref()
-  return () => clearInterval(timer)
-}
-
-// ─── Convenience export ─────────────────────────────────────────────
-
-/**
- * Bridge namespace — groups all operations.
- *
- * @example
- * ```js
- * import { bridge } from '@w3-io/bridge'
- *
- * await bridge.ethereum.readContract({ ... })
- * await bridge.crypto.keccak256({ data: '0xdeadbeef' })
- * await bridge.health()
- * ```
- */
-const bridge = {
-  ethereum,
-  bitcoin,
-  solana,
-  crypto: bridge_crypto,
-  health,
-  heartbeat,
-  startHeartbeat,
-}
-
 ;// CONCATENATED MODULE: ./src/cctp-onchain.js
 /**
  * CCTP on-chain operations via the W3 bridge.
@@ -68392,6 +68338,22 @@ const bridge = {
 
 
 
+
+// Thin wrappers over action-core bridge to match the existing calling convention.
+const ethereum = {
+  readContract({ network, contract, method, args, abi, rpcUrl }) {
+    return bridge.chain('ethereum', 'read-contract', { contract, method, args, abi, rpcUrl }, network)
+  },
+  callContract({ network, contract, method, args, abi, value, rpcUrl, gasLimit }) {
+    return bridge.chain('ethereum', 'call-contract', { contract, method, args, abi, value, rpcUrl, gasLimit }, network)
+  },
+}
+
+const cctp_onchain_crypto = {
+  keccak256({ data }) {
+    return bridge.crypto('keccak256', { data })
+  },
+}
 
 /**
  * Pad an EVM address to bytes32 for CCTP.
@@ -68447,7 +68409,7 @@ async function approveBurn({ chain, amount, domains, contracts }) {
   })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     spender: chainContracts.tokenMessenger,
     amount,
     chain,
@@ -68548,13 +68510,13 @@ async function burn({
   }
 
   // Compute messageHash (keccak256)
-  const { hash: messageHash } = await bridge_crypto.keccak256({ data: messageBytes })
+  const { hash: messageHash } = await cctp_onchain_crypto.keccak256({ data: messageBytes })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     sourceDomain: sourceInfo.domain,
     messageBytes,
-    messageHash: '0x' + messageHash,
+    messageHash: messageHash.startsWith('0x') ? messageHash : '0x' + messageHash,
     amount,
     source: chain,
     destination: destinationChain,
@@ -68596,7 +68558,7 @@ async function mint({ chain, messageBytes, attestation, contracts, rpcUrl }) {
   })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     chain,
     success: true,
   }
@@ -68656,12 +68618,12 @@ async function replaceMessage({
 
   let newMessageHash = null
   if (newMessageBytes) {
-    const { hash } = await bridge_crypto.keccak256({ data: newMessageBytes })
-    newMessageHash = '0x' + hash
+    const { hash } = await cctp_onchain_crypto.keccak256({ data: newMessageBytes })
+    newMessageHash = hash.startsWith('0x') ? hash : '0x' + hash
   }
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     chain,
     newMessageBytes,
     newMessageHash,
@@ -68688,6 +68650,28 @@ var index_cjs = __nccwpck_require__(9443);
 
 
 
+
+// Thin wrappers over action-core bridge to match the existing calling convention.
+const solana = {
+  payerAddress() {
+    return bridge.chain('solana', 'payer-address', {})
+  },
+  generateKeypair() {
+    return bridge.chain('solana', 'generate-keypair', {})
+  },
+  callProgram(params) {
+    return bridge.chain('solana', 'call-program', params)
+  },
+  getAccount(params) {
+    return bridge.chain('solana', 'get-account', params)
+  },
+}
+
+const cctp_solana_crypto = {
+  keccak256({ data }) {
+    return bridge.crypto('keccak256', { data })
+  },
+}
 
 // ─── PDA Derivation ───────────────────────────────────────────────
 // Uses @solana/web3.js PublicKey.findProgramAddressSync only.
@@ -69011,7 +68995,7 @@ async function burnSolana({
   const messageBytesHex = '0x' + msgBytes.toString('hex')
 
   // Compute messageHash via bridge crypto
-  const { hash: messageHash } = await bridge_crypto.keccak256({ data: messageBytesHex })
+  const { hash: messageHash } = await cctp_solana_crypto.keccak256({ data: messageBytesHex })
 
   return {
     signature: result.signature,
@@ -69030,315 +69014,248 @@ async function burnSolana({
 
 
 
-const COMMANDS = {
+
+// -- Shared helpers ---------------------------------------------------------
+
+function getClient() {
+  const timeoutInput = lib_core.getInput('timeout')
+  return new CircleClient({
+    apiKey: lib_core.getInput('api-key') || undefined,
+    apiUrl: lib_core.getInput('api-url') || undefined,
+    entitySecret: lib_core.getInput('entity-secret') || undefined,
+    irisUrl: lib_core.getInput('iris-url') || undefined,
+    sandbox: lib_core.getInput('sandbox') === 'true',
+    timeout: timeoutInput ? Number(timeoutInput) : undefined,
+  })
+}
+
+function getRpcUrl() {
+  return lib_core.getInput('rpc-url') || lib_core.getInput('rpc_url') || undefined
+}
+
+/** Set per-field outputs for cross-job piping (avoids fromJSON). */
+function setPipeOutputs(result) {
+  setOutputs({
+    tx_hash: result.txHash,
+    source_domain: result.sourceDomain != null ? String(result.sourceDomain) : undefined,
+    message_hash: result.messageHash,
+    message_bytes: result.messageBytes,
+    message: result.message,
+    attestation: result.attestation,
+  })
+}
+
+// -- Command router ---------------------------------------------------------
+
+const router = createCommandRouter({
   // CCTP (IRIS API — no auth)
-  'get-attestation': runGetAttestation,
-  'wait-for-attestation': runWaitForAttestation,
-  'get-supported-chains': runGetSupportedChains,
-  'get-domain-info': runGetDomainInfo,
-  // CCTP on-chain (requires private-key + RPC)
-  'approve-burn': runApproveBurn,
-  burn: runBurn,
-  mint: runMint,
-  'replace-message': runReplaceMessage,
-  // Setup (Platform API — requires api-key + entity-secret)
-  'register-entity-secret': runRegisterEntitySecret,
-  // Wallets (Platform API — requires api-key)
-  'create-wallet-set': runCreateWalletSet,
-  'create-wallet': runCreateWallet,
-  'get-wallet': runGetWallet,
-  'list-wallets': runListWallets,
-  'get-balance': runGetBalance,
-  // Transactions (Platform API — requires api-key)
-  transfer: runTransfer,
-  'get-transaction': runGetTransaction,
-  'estimate-fee': runEstimateFee,
-  // Compliance (Platform API — requires api-key)
-  'screen-address': runScreenAddress,
-}
-
-async function run() {
-  try {
-    const command = lib_core.getInput('command', { required: true })
-    const handler = COMMANDS[command]
-
-    if (!handler) {
-      lib_core.setFailed(
-        `Unknown command: "${command}". Available: ${Object.keys(COMMANDS).join(', ')}`,
-      )
-      return
-    }
-
-    const timeoutInput = lib_core.getInput('timeout')
-    const client = new CircleClient({
-      apiKey: lib_core.getInput('api-key') || undefined,
-      apiUrl: lib_core.getInput('api-url') || undefined,
-      entitySecret: lib_core.getInput('entity-secret') || undefined,
-      irisUrl: lib_core.getInput('iris-url') || undefined,
-      sandbox: lib_core.getInput('sandbox') === 'true',
-      timeout: timeoutInput ? Number(timeoutInput) : undefined,
-    })
-
-    const result = await handler(client)
-    lib_core.setOutput('result', JSON.stringify(result))
-
-    // Set individual outputs for piping between steps (avoids fromJSON on large values)
-    if (result.txHash) lib_core.setOutput('tx_hash', result.txHash)
-    if (result.sourceDomain != null) lib_core.setOutput('source_domain', String(result.sourceDomain))
-    if (result.messageHash) lib_core.setOutput('message_hash', result.messageHash)
-    if (result.messageBytes) lib_core.setOutput('message_bytes', result.messageBytes)
-    if (result.message) lib_core.setOutput('message', result.message)
-    if (result.attestation) lib_core.setOutput('attestation', result.attestation)
-
-    // Summary disabled — @actions/core Summary throws unhandled rejections
-    // in environments without GITHUB_STEP_SUMMARY set.
-  } catch (error) {
-    if (error instanceof CircleError) {
-      lib_core.setFailed(`Circle error (${error.code}): ${error.message}`)
-    } else {
-      lib_core.setFailed(error.message)
-    }
-  }
-}
-
-// -- Command handlers -------------------------------------------------------
-
-async function runGetAttestation(client) {
-  const messageHash = lib_core.getInput('message-hash', { required: true })
-  return client.getAttestation(messageHash)
-}
-
-async function runWaitForAttestation(client) {
-  // Support both hyphenated and underscored input names
-  const txHash = lib_core.getInput('tx-hash') || lib_core.getInput('tx_hash')
-  const sourceDomain = lib_core.getInput('source-domain') || lib_core.getInput('source_domain')
-  const messageHash = lib_core.getInput('message-hash') || lib_core.getInput('message_hash')
-  const pollIntervalInput = lib_core.getInput('poll-interval')
-  const maxAttemptsInput = lib_core.getInput('max-attempts')
-  const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
-  const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
-
-  // V2: use tx-hash + source-domain (preferred — instant when fee is set)
-  if (txHash && sourceDomain) {
-    return client.waitForAttestationV2(txHash, Number(sourceDomain), { pollInterval, maxAttempts })
-  }
-
-  // V1 fallback: use message-hash
-  if (!messageHash) {
-    throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
-  }
-  return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
-}
-
-async function runGetSupportedChains(client) {
-  const network = lib_core.getInput('network') || undefined
-  return client.getSupportedChains(network)
-}
-
-async function runGetDomainInfo(client) {
-  const chain = lib_core.getInput('chain', { required: true })
-  return client.getDomainInfo(chain)
-}
-
-// -- CCTP on-chain commands --------------------------------------------------
-
-async function runApproveBurn() {
-  const chain = lib_core.getInput('chain', { required: true })
-  const amount = lib_core.getInput('amount', { required: true })
-  const rpcUrl = lib_core.getInput("rpc-url") || lib_core.getInput("rpc_url") || undefined
-  return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS, rpcUrl })
-}
-
-async function runBurn() {
-  const chain = lib_core.getInput('chain', { required: true })
-  const destinationChain = lib_core.getInput('destination-chain', { required: true })
-  const recipient = lib_core.getInput('destination-address', { required: true })
-  const amount = lib_core.getInput('amount', { required: true })
-  const destinationCaller = lib_core.getInput('destination-caller') || undefined
-  const rpcUrl = lib_core.getInput('rpc-url') || lib_core.getInput('rpc_url') || undefined
-
-  // Route to Solana implementation for Solana source chains
-  const chainInfo = DOMAINS[chain]
-  if (chainInfo && chainInfo.type === 'solana') {
-    return burnSolana({
-      chain,
-      destinationChain,
-      recipient,
-      amount,
-      contracts: CONTRACTS,
-      domains: DOMAINS,
-      destinationCaller,
-    })
-  }
-
-  return burn({
-    chain,
-    destinationChain,
-    recipient,
-    rpcUrl,
-    amount,
-    domains: DOMAINS,
-    contracts: CONTRACTS,
-    destinationCaller,
-  })
-}
-
-async function runMint() {
-  const chain = lib_core.getInput('chain', { required: true })
-  const messageBytes = lib_core.getInput('message-bytes', { required: true })
-  const attestation = lib_core.getInput('attestation', { required: true })
-
-  // Route to Solana implementation for Solana chains
-  const chainInfo = DOMAINS[chain]
-  if (chainInfo && chainInfo.type === 'solana') {
-    return mintSolana({
-      chain,
-      messageBytes,
-      attestation,
-      contracts: CONTRACTS,
-      domains: DOMAINS,
-    })
-  }
-
-  const rpcUrl = lib_core.getInput("rpc-url") || lib_core.getInput("rpc_url") || undefined
-  return mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl })
-}
-
-async function runReplaceMessage() {
-  const chain = lib_core.getInput('chain', { required: true })
-  const originalMessageBytes = lib_core.getInput('original-message-bytes', { required: true })
-  const originalAttestation = lib_core.getInput('original-attestation', { required: true })
-  const newDestinationCaller = lib_core.getInput('destination-caller') || undefined
-  return replaceMessage({
-    chain,
-    originalMessageBytes,
-    originalAttestation,
-    newDestinationCaller,
-    contracts: CONTRACTS,
-  })
-}
-
-// -- Platform API: Setup ----------------------------------------------------
-
-async function runRegisterEntitySecret(client) {
-  return client.registerEntitySecret()
-}
-
-// -- Platform API: Wallets --------------------------------------------------
-
-async function runCreateWalletSet(client) {
-  const name = lib_core.getInput('name', { required: true })
-  return client.createWalletSet({ name })
-}
-
-async function runCreateWallet(client) {
-  const walletSetId = lib_core.getInput('wallet-set-id', { required: true })
-  const blockchains = lib_core.getInput('blockchains', { required: true })
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const countInput = lib_core.getInput('count')
-  const count = countInput ? Number(countInput) : 1
-  return client.createWallet({ walletSetId, blockchains, count })
-}
-
-async function runGetWallet(client) {
-  const walletId = lib_core.getInput('wallet-id', { required: true })
-  return client.getWallet(walletId)
-}
-
-async function runListWallets(client) {
-  const walletSetId = lib_core.getInput('wallet-set-id') || undefined
-  const blockchain = lib_core.getInput('blockchain') || undefined
-  const pageSizeInput = lib_core.getInput('page-size')
-  const pageSize = pageSizeInput ? Number(pageSizeInput) : undefined
-  return client.listWallets({ walletSetId, blockchain, pageSize })
-}
-
-async function runGetBalance(client) {
-  const walletId = lib_core.getInput('wallet-id', { required: true })
-  return client.getBalance(walletId)
-}
-
-// -- Platform API: Transactions ---------------------------------------------
-
-async function runTransfer(client) {
-  const walletId = lib_core.getInput('wallet-id', { required: true })
-  const destinationAddress = lib_core.getInput('destination-address', { required: true })
-  const amount = lib_core.getInput('amount', { required: true })
-  const tokenId = lib_core.getInput('token-id') || undefined
-  const blockchain = lib_core.getInput('blockchain') || undefined
-  return client.transfer({ walletId, destinationAddress, tokenId, amount, blockchain })
-}
-
-async function runGetTransaction(client) {
-  const transactionId = lib_core.getInput('transaction-id', { required: true })
-  return client.getTransaction(transactionId)
-}
-
-async function runEstimateFee(client) {
-  const walletId = lib_core.getInput('wallet-id', { required: true })
-  const destinationAddress = lib_core.getInput('destination-address', { required: true })
-  const tokenId = lib_core.getInput('token-id', { required: true })
-  const amount = lib_core.getInput('amount', { required: true })
-  return client.estimateFee({ walletId, destinationAddress, tokenId, amount })
-}
-
-// -- Platform API: Compliance -----------------------------------------------
-
-async function runScreenAddress(client) {
-  const address = lib_core.getInput('address', { required: true })
-  const chain = lib_core.getInput('blockchain', { required: true })
-  return client.screenAddress(address, { chain })
-}
-
-// -- Job summary ------------------------------------------------------------
-
-async function writeSummary(command, result) {
-  const heading = `Circle: ${command}`
-
-  if (command === 'get-attestation' || command === 'wait-for-attestation') {
+  'get-attestation': async () => {
+    const client = getClient()
+    const messageHash = lib_core.getInput('message-hash', { required: true })
+    const result = await client.getAttestation(messageHash)
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
     const status = result.status === 'complete' ? 'Complete' : 'Pending'
-    core.summary.addHeading(heading, 3).addRaw(`**Status:** ${status}\n\n`)
-    if (result.attestation) {
-      core.summary.addRaw(`**Attestation:** \`${result.attestation.slice(0, 20)}...\`\n\n`)
+    await writeSummary('Circle: get-attestation', [['Status', status]])
+  },
+
+  'wait-for-attestation': async () => {
+    const client = getClient()
+    const txHash = lib_core.getInput('tx-hash') || lib_core.getInput('tx_hash')
+    const sourceDomain = lib_core.getInput('source-domain') || lib_core.getInput('source_domain')
+    const messageHash = lib_core.getInput('message-hash') || lib_core.getInput('message_hash')
+    const pollIntervalInput = lib_core.getInput('poll-interval')
+    const maxAttemptsInput = lib_core.getInput('max-attempts')
+    const pollInterval = pollIntervalInput ? Number(pollIntervalInput) : undefined
+    const maxAttempts = maxAttemptsInput ? Number(maxAttemptsInput) : undefined
+
+    let result
+    if (txHash && sourceDomain) {
+      result = await client.waitForAttestationV2(txHash, Number(sourceDomain), { pollInterval, maxAttempts })
+    } else if (messageHash) {
+      result = await client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
+    } else {
+      throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
     }
-    await core.summary.write()
-    return
-  }
 
-  if (command === 'get-supported-chains' && result.chains) {
-    const headerRow = [
-      { data: 'Name', header: true },
-      { data: 'Domain', header: true },
-      { data: 'Chain ID', header: true },
-      { data: 'Network', header: true },
-    ]
-    const dataRows = result.chains.map((c) => [
-      c.name,
-      String(c.domain),
-      String(c.chainId),
-      c.network,
-    ])
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
+    const status = result.status === 'complete' ? 'Complete' : 'Pending'
+    await writeSummary('Circle: wait-for-attestation', [['Status', status]])
+  },
 
-    core.summary.addHeading(heading, 3).addTable([headerRow, ...dataRows])
-    await core.summary.write()
-    return
-  }
+  'get-supported-chains': async () => {
+    const client = getClient()
+    const network = lib_core.getInput('network') || undefined
+    const result = await client.getSupportedChains(network)
+    setJsonOutput('result', result)
+    await writeSummary('Circle: get-supported-chains', result)
+  },
 
-  core.summary.addHeading(heading, 3)
-    .addCodeBlock(JSON.stringify(result, null, 2), 'json')
-  await core.summary.write()
+  'get-domain-info': async () => {
+    const client = getClient()
+    const chain = lib_core.getInput('chain', { required: true })
+    const result = await client.getDomainInfo(chain)
+    setJsonOutput('result', result)
+    await writeSummary('Circle: get-domain-info', result)
+  },
+
+  // CCTP on-chain (requires bridge signer + RPC)
+  'approve-burn': async () => {
+    const chain = lib_core.getInput('chain', { required: true })
+    const amount = lib_core.getInput('amount', { required: true })
+    const result = await approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS, rpcUrl: getRpcUrl() })
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
+    await writeSummary('Circle: approve-burn', [['Chain', chain], ['Amount', `${amount} USDC`]])
+  },
+
+  burn: async () => {
+    const chain = lib_core.getInput('chain', { required: true })
+    const destinationChain = lib_core.getInput('destination-chain', { required: true })
+    const recipient = lib_core.getInput('destination-address', { required: true })
+    const amount = lib_core.getInput('amount', { required: true })
+    const destinationCaller = lib_core.getInput('destination-caller') || undefined
+    const rpcUrl = getRpcUrl()
+
+    const chainInfo = DOMAINS[chain]
+    const result = chainInfo && chainInfo.type === 'solana'
+      ? await burnSolana({ chain, destinationChain, recipient, amount, contracts: CONTRACTS, domains: DOMAINS, destinationCaller })
+      : await burn({ chain, destinationChain, recipient, rpcUrl, amount, domains: DOMAINS, contracts: CONTRACTS, destinationCaller })
+
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
+    await writeSummary('Circle: burn', [['Source', chain], ['Destination', destinationChain], ['Amount', `${amount} USDC`], ['TX', `\`${result.txHash}\``]])
+  },
+
+  mint: async () => {
+    const chain = lib_core.getInput('chain', { required: true })
+    const messageBytes = lib_core.getInput('message-bytes', { required: true })
+    const attestation = lib_core.getInput('attestation', { required: true })
+
+    const chainInfo = DOMAINS[chain]
+    const result = chainInfo && chainInfo.type === 'solana'
+      ? await mintSolana({ chain, messageBytes, attestation, contracts: CONTRACTS, domains: DOMAINS })
+      : await mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl: getRpcUrl() })
+
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
+    await writeSummary('Circle: mint', [['Chain', chain], ['TX', `\`${result.txHash}\``]])
+  },
+
+  'replace-message': async () => {
+    const chain = lib_core.getInput('chain', { required: true })
+    const originalMessageBytes = lib_core.getInput('original-message-bytes', { required: true })
+    const originalAttestation = lib_core.getInput('original-attestation', { required: true })
+    const newDestinationCaller = lib_core.getInput('destination-caller') || undefined
+    const result = await replaceMessage({ chain, originalMessageBytes, originalAttestation, newDestinationCaller, contracts: CONTRACTS })
+    setJsonOutput('result', result)
+    setPipeOutputs(result)
+    await writeSummary('Circle: replace-message', result)
+  },
+
+  // Platform API: Setup
+  'register-entity-secret': async () => {
+    const client = getClient()
+    const result = await client.registerEntitySecret()
+    setJsonOutput('result', result)
+    await writeSummary('Circle: register-entity-secret', result)
+  },
+
+  // Platform API: Wallets
+  'create-wallet-set': async () => {
+    const client = getClient()
+    const name = lib_core.getInput('name', { required: true })
+    const result = await client.createWalletSet({ name })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: create-wallet-set', result)
+  },
+
+  'create-wallet': async () => {
+    const client = getClient()
+    const walletSetId = lib_core.getInput('wallet-set-id', { required: true })
+    const blockchains = lib_core.getInput('blockchains', { required: true }).split(',').map((s) => s.trim()).filter(Boolean)
+    const countInput = lib_core.getInput('count')
+    const result = await client.createWallet({ walletSetId, blockchains, count: countInput ? Number(countInput) : 1 })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: create-wallet', result)
+  },
+
+  'get-wallet': async () => {
+    const client = getClient()
+    const walletId = lib_core.getInput('wallet-id', { required: true })
+    const result = await client.getWallet(walletId)
+    setJsonOutput('result', result)
+    await writeSummary('Circle: get-wallet', result)
+  },
+
+  'list-wallets': async () => {
+    const client = getClient()
+    const walletSetId = lib_core.getInput('wallet-set-id') || undefined
+    const blockchain = lib_core.getInput('blockchain') || undefined
+    const pageSizeInput = lib_core.getInput('page-size')
+    const result = await client.listWallets({ walletSetId, blockchain, pageSize: pageSizeInput ? Number(pageSizeInput) : undefined })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: list-wallets', result)
+  },
+
+  'get-balance': async () => {
+    const client = getClient()
+    const walletId = lib_core.getInput('wallet-id', { required: true })
+    const result = await client.getBalance(walletId)
+    setJsonOutput('result', result)
+    await writeSummary('Circle: get-balance', result)
+  },
+
+  // Platform API: Transactions
+  transfer: async () => {
+    const client = getClient()
+    const walletId = lib_core.getInput('wallet-id', { required: true })
+    const destinationAddress = lib_core.getInput('destination-address', { required: true })
+    const amount = lib_core.getInput('amount', { required: true })
+    const tokenId = lib_core.getInput('token-id') || undefined
+    const blockchain = lib_core.getInput('blockchain') || undefined
+    const result = await client.transfer({ walletId, destinationAddress, tokenId, amount, blockchain })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: transfer', result)
+  },
+
+  'get-transaction': async () => {
+    const client = getClient()
+    const transactionId = lib_core.getInput('transaction-id', { required: true })
+    const result = await client.getTransaction(transactionId)
+    setJsonOutput('result', result)
+    await writeSummary('Circle: get-transaction', result)
+  },
+
+  'estimate-fee': async () => {
+    const client = getClient()
+    const walletId = lib_core.getInput('wallet-id', { required: true })
+    const destinationAddress = lib_core.getInput('destination-address', { required: true })
+    const tokenId = lib_core.getInput('token-id', { required: true })
+    const amount = lib_core.getInput('amount', { required: true })
+    const result = await client.estimateFee({ walletId, destinationAddress, tokenId, amount })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: estimate-fee', result)
+  },
+
+  // Platform API: Compliance
+  'screen-address': async () => {
+    const client = getClient()
+    const address = lib_core.getInput('address', { required: true })
+    const chain = lib_core.getInput('blockchain', { required: true })
+    const result = await client.screenAddress(address, { chain })
+    setJsonOutput('result', result)
+    await writeSummary('Circle: screen-address', result)
+  },
+})
+
+function run() {
+  router()
 }
 
 ;// CONCATENATED MODULE: ./src/index.js
-// Entry point.
 
-
-// Suppress unhandled rejections from @actions/core Summary module
-// (it throws when GITHUB_STEP_SUMMARY file operations fail).
-// Without this, Node.js exits with code 1 on any unhandled rejection.
-process.on('unhandledRejection', () => {})
 
 run()
 

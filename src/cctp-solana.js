@@ -11,8 +11,30 @@
 
 import { createHash } from 'node:crypto'
 import { PublicKey } from '@solana/web3.js'
-import { solana, crypto } from '../lib/bridge.js'
+import { bridge } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
+
+// Thin wrappers over action-core bridge to match the existing calling convention.
+const solana = {
+  payerAddress() {
+    return bridge.chain('solana', 'payer-address', {})
+  },
+  generateKeypair() {
+    return bridge.chain('solana', 'generate-keypair', {})
+  },
+  callProgram(params) {
+    return bridge.chain('solana', 'call-program', params)
+  },
+  getAccount(params) {
+    return bridge.chain('solana', 'get-account', params)
+  },
+}
+
+const crypto = {
+  keccak256({ data }) {
+    return bridge.crypto('keccak256', { data })
+  },
+}
 
 // ─── PDA Derivation ───────────────────────────────────────────────
 // Uses @solana/web3.js PublicKey.findProgramAddressSync only.
