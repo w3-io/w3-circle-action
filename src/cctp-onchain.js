@@ -143,11 +143,6 @@ export async function burn({
     ...rpc,
   })
 
-  // Debug: dump ALL keys in bridge response to stderr
-  process.stderr.write('BRIDGE_KEYS=' + JSON.stringify(Object.keys(result)) + '\n')
-  process.stderr.write('BRIDGE_TXHASH=' + String(result.txHash) + '\n')
-  process.stderr.write('BRIDGE_OK=' + String(result.ok) + '\n')
-
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
   // MessageSent event topic: keccak256("MessageSent(bytes)")
@@ -181,7 +176,7 @@ export async function burn({
     txHash: result.txHash || result.transactionHash || result.signature,
     sourceDomain: sourceInfo.domain,
     messageBytes,
-    messageHash: '0x' + messageHash,
+    messageHash: messageHash.startsWith('0x') ? messageHash : '0x' + messageHash,
     amount,
     source: chain,
     destination: destinationChain,
@@ -284,7 +279,7 @@ export async function replaceMessage({
   let newMessageHash = null
   if (newMessageBytes) {
     const { hash } = await crypto.keccak256({ data: newMessageBytes })
-    newMessageHash = '0x' + hash
+    newMessageHash = hash.startsWith('0x') ? hash : '0x' + hash
   }
 
   return {
