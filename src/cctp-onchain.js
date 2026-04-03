@@ -69,7 +69,7 @@ export async function approveBurn({ chain, amount, domains, contracts }) {
   })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     spender: chainContracts.tokenMessenger,
     amount,
     chain,
@@ -173,7 +173,7 @@ export async function burn({
   const { hash: messageHash } = await crypto.keccak256({ data: messageBytes })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     sourceDomain: sourceInfo.domain,
     messageBytes,
     messageHash: '0x' + messageHash,
@@ -218,7 +218,7 @@ export async function mint({ chain, messageBytes, attestation, contracts, rpcUrl
   })
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     chain,
     success: true,
   }
@@ -283,7 +283,7 @@ export async function replaceMessage({
   }
 
   return {
-    txHash: result.transactionHash || result.signature,
+    txHash: result.txHash || result.transactionHash || result.signature,
     chain,
     newMessageBytes,
     newMessageHash,
