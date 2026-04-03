@@ -28633,6 +28633,10 @@ async function burn({
     ...rpc,
   });
 
+  console.log('DEBUG bridge response keys:', Object.keys(result));
+  console.log('DEBUG txHash:', result.txHash);
+  console.log('DEBUG transactionId:', result.transactionId);
+
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
   // MessageSent event topic: keccak256("MessageSent(bytes)")
