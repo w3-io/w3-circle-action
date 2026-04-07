@@ -1,4 +1,5 @@
 import * as core from '@actions/core'
+import { W3ActionError, handleError } from '@w3-io/action-core'
 import { CircleClient, CircleError, DOMAINS, CONTRACTS } from './circle.js'
 import { approveBurn, burn, mint, replaceMessage } from './cctp-onchain.js'
 import { mintSolana, burnSolana } from './cctp-solana.js'
@@ -66,10 +67,12 @@ export async function run() {
     // Summary disabled — @actions/core Summary throws unhandled rejections
     // in environments without GITHUB_STEP_SUMMARY set.
   } catch (error) {
-    if (error instanceof CircleError) {
-      core.setFailed(`Circle error (${error.code}): ${error.message}`)
+    if (error instanceof W3ActionError) {
+      handleError(error)
+    } else if (error instanceof CircleError) {
+      handleError(new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }))
     } else {
-      core.setFailed(error.message)
+      handleError(error)
     }
   }
 }
@@ -98,7 +101,7 @@ async function runWaitForAttestation(client) {
 
   // V1 fallback: use message-hash
   if (!messageHash) {
-    throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+    throw new W3ActionError('MISSING_INPUT', 'Either tx-hash + source-domain (V2) or message-hash (V1) is required')
   }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }

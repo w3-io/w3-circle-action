@@ -160,7 +160,7 @@ export class CircleError extends Error {
 }
 
 export class CircleClient {
-  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30 } = {}) {
+  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30, maxRetries = 3 } = {}) {
     this.apiKey = apiKey || null
     this.entitySecret = entitySecret || null
     this.cachedPublicKey = null
@@ -171,6 +171,7 @@ export class CircleClient {
         ? DEFAULT_IRIS_SANDBOX_URL
         : DEFAULT_IRIS_URL
     this.timeout = timeout * 1000
+    this.maxRetries = maxRetries
   }
 
   // ---------------------------------------------------------------------------
@@ -657,53 +658,75 @@ export class CircleClient {
 
   async platformRequest(method, path, body) {
     const url = `${this.apiUrl}${path}`
-    const headers = {
-      Authorization: `Bearer ${this.apiKey}`,
-      Accept: 'application/json',
-    }
 
-    const options = {
-      method,
-      headers,
-      signal: AbortSignal.timeout(this.timeout),
-    }
-
-    if (body && method !== 'GET') {
-      headers['Content-Type'] = 'application/json'
-      options.body = JSON.stringify(body)
-    }
-
-    const response = await fetch(url, options)
-    const text = await response.text()
-
-    if (!response.ok) {
-      let errorMessage = `Circle API error: ${response.status}`
-      let errorCode = 'API_ERROR'
-      try {
-        const err = JSON.parse(text)
-        if (err.message) errorMessage = err.message
-        if (err.code) errorCode = String(err.code)
-      } catch {
-        // use default message
+    let lastError
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000)
+        const jitter = Math.random() * delay * 0.5
+        await this.sleep(delay + jitter)
       }
-      throw new CircleError(errorMessage, {
-        status: response.status,
-        body: text,
-        code: errorCode,
-      })
+
+      const headers = {
+        Authorization: `Bearer ${this.apiKey}`,
+        Accept: 'application/json',
+      }
+
+      const options = {
+        method,
+        headers,
+        signal: AbortSignal.timeout(this.timeout),
+      }
+
+      if (body && method !== 'GET') {
+        headers['Content-Type'] = 'application/json'
+        options.body = JSON.stringify(body)
+      }
+
+      const response = await fetch(url, options)
+      const text = await response.text()
+
+      // Retry on 429 (rate limit) and 5xx (server error)
+      if ((response.status === 429 || response.status >= 500) && attempt < this.maxRetries) {
+        lastError = new CircleError(`Circle API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: response.status === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+        })
+        continue
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Circle API error: ${response.status}`
+        let errorCode = 'API_ERROR'
+        try {
+          const err = JSON.parse(text)
+          if (err.message) errorMessage = err.message
+          if (err.code) errorCode = String(err.code)
+        } catch {
+          // use default message
+        }
+        throw new CircleError(errorMessage, {
+          status: response.status,
+          body: text,
+          code: errorCode,
+        })
+      }
+
+      if (!text || !text.trim()) return {}
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        throw new CircleError('Invalid JSON from Circle API', {
+          status: response.status,
+          body: text,
+          code: 'PARSE_ERROR',
+        })
+      }
     }
 
-    if (!text || !text.trim()) return {}
-
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new CircleError('Invalid JSON from Circle API', {
-        status: response.status,
-        body: text,
-        code: 'PARSE_ERROR',
-      })
-    }
+    throw lastError
   }
 
   // ---------------------------------------------------------------------------
@@ -712,36 +735,58 @@ export class CircleClient {
 
   async irisRequest(method, path) {
     const url = `${this.irisUrl}${path}`
-    const response = await fetch(url, {
-      method,
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(this.timeout),
-    })
 
-    const text = await response.text()
+    let lastError
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000)
+        const jitter = Math.random() * delay * 0.5
+        await this.sleep(delay + jitter)
+      }
 
-    // IRIS returns 404 for not-yet-attested messages — treat as pending
-    if (response.status === 404) {
-      return { status: 'pending_confirmations', attestation: null }
-    }
-
-    if (!response.ok) {
-      throw new CircleError(`IRIS API error: ${response.status}`, {
-        status: response.status,
-        body: text,
-        code: 'IRIS_ERROR',
+      const response = await fetch(url, {
+        method,
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(this.timeout),
       })
+
+      const text = await response.text()
+
+      // IRIS returns 404 for not-yet-attested messages — treat as pending
+      if (response.status === 404) {
+        return { status: 'pending_confirmations', attestation: null }
+      }
+
+      // Retry on 429 (rate limit) and 5xx (server error)
+      if ((response.status === 429 || response.status >= 500) && attempt < this.maxRetries) {
+        lastError = new CircleError(`IRIS API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: response.status === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+        })
+        continue
+      }
+
+      if (!response.ok) {
+        throw new CircleError(`IRIS API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: 'IRIS_ERROR',
+        })
+      }
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        throw new CircleError('Invalid JSON from IRIS API', {
+          status: response.status,
+          body: text,
+          code: 'PARSE_ERROR',
+        })
+      }
     }
 
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new CircleError('Invalid JSON from IRIS API', {
-        status: response.status,
-        body: text,
-        code: 'PARSE_ERROR',
-      })
-    }
+    throw lastError
   }
 
   sleep(ms) {
