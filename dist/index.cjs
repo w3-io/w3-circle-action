@@ -27295,6 +27295,42 @@ function requireCore () {
 var coreExports = requireCore();
 
 /**
+ * Structured error with code, message, and optional details.
+ */
+class W3ActionError extends Error {
+    code;
+    statusCode;
+    details;
+    constructor(code, message, options) {
+        super(message);
+        this.name = "W3ActionError";
+        this.code = code;
+        this.statusCode = options?.statusCode;
+        this.details = options?.details;
+    }
+}
+/**
+ * Top-level error handler for action entry points.
+ *
+ * Usage:
+ *   main().catch(handleError);
+ */
+function handleError(error) {
+    if (error instanceof W3ActionError) {
+        coreExports.setOutput("error-code", error.code);
+        if (error.statusCode)
+            coreExports.setOutput("status-code", error.statusCode);
+        coreExports.setFailed(`[${error.code}] ${error.message}`);
+    }
+    else if (error instanceof Error) {
+        coreExports.setFailed(error.message);
+    }
+    else {
+        coreExports.setFailed(String(error));
+    }
+}
+
+/**
  * Circle API client.
  *
  * Two API surfaces:
@@ -27453,7 +27489,7 @@ class CircleError extends Error {
 }
 
 class CircleClient {
-  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30 } = {}) {
+  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30, maxRetries = 3 } = {}) {
     this.apiKey = apiKey || null;
     this.entitySecret = entitySecret || null;
     this.cachedPublicKey = null;
@@ -27464,6 +27500,7 @@ class CircleClient {
         ? DEFAULT_IRIS_SANDBOX_URL
         : DEFAULT_IRIS_URL;
     this.timeout = timeout * 1000;
+    this.maxRetries = maxRetries;
   }
 
   // ---------------------------------------------------------------------------
@@ -27950,53 +27987,75 @@ class CircleClient {
 
   async platformRequest(method, path, body) {
     const url = `${this.apiUrl}${path}`;
-    const headers = {
-      Authorization: `Bearer ${this.apiKey}`,
-      Accept: 'application/json',
-    };
 
-    const options = {
-      method,
-      headers,
-      signal: AbortSignal.timeout(this.timeout),
-    };
-
-    if (body && method !== 'GET') {
-      headers['Content-Type'] = 'application/json';
-      options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(url, options);
-    const text = await response.text();
-
-    if (!response.ok) {
-      let errorMessage = `Circle API error: ${response.status}`;
-      let errorCode = 'API_ERROR';
-      try {
-        const err = JSON.parse(text);
-        if (err.message) errorMessage = err.message;
-        if (err.code) errorCode = String(err.code);
-      } catch {
-        // use default message
+    let lastError;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        const jitter = Math.random() * delay * 0.5;
+        await this.sleep(delay + jitter);
       }
-      throw new CircleError(errorMessage, {
-        status: response.status,
-        body: text,
-        code: errorCode,
-      })
+
+      const headers = {
+        Authorization: `Bearer ${this.apiKey}`,
+        Accept: 'application/json',
+      };
+
+      const options = {
+        method,
+        headers,
+        signal: AbortSignal.timeout(this.timeout),
+      };
+
+      if (body && method !== 'GET') {
+        headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(url, options);
+      const text = await response.text();
+
+      // Retry on 429 (rate limit) and 5xx (server error)
+      if ((response.status === 429 || response.status >= 500) && attempt < this.maxRetries) {
+        lastError = new CircleError(`Circle API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: response.status === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+        });
+        continue
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Circle API error: ${response.status}`;
+        let errorCode = 'API_ERROR';
+        try {
+          const err = JSON.parse(text);
+          if (err.message) errorMessage = err.message;
+          if (err.code) errorCode = String(err.code);
+        } catch {
+          // use default message
+        }
+        throw new CircleError(errorMessage, {
+          status: response.status,
+          body: text,
+          code: errorCode,
+        })
+      }
+
+      if (!text || !text.trim()) return {}
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        throw new CircleError('Invalid JSON from Circle API', {
+          status: response.status,
+          body: text,
+          code: 'PARSE_ERROR',
+        })
+      }
     }
 
-    if (!text || !text.trim()) return {}
-
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new CircleError('Invalid JSON from Circle API', {
-        status: response.status,
-        body: text,
-        code: 'PARSE_ERROR',
-      })
-    }
+    throw lastError
   }
 
   // ---------------------------------------------------------------------------
@@ -28005,36 +28064,58 @@ class CircleClient {
 
   async irisRequest(method, path) {
     const url = `${this.irisUrl}${path}`;
-    const response = await fetch(url, {
-      method,
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(this.timeout),
-    });
 
-    const text = await response.text();
+    let lastError;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        const jitter = Math.random() * delay * 0.5;
+        await this.sleep(delay + jitter);
+      }
 
-    // IRIS returns 404 for not-yet-attested messages — treat as pending
-    if (response.status === 404) {
-      return { status: 'pending_confirmations', attestation: null }
+      const response = await fetch(url, {
+        method,
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(this.timeout),
+      });
+
+      const text = await response.text();
+
+      // IRIS returns 404 for not-yet-attested messages — treat as pending
+      if (response.status === 404) {
+        return { status: 'pending_confirmations', attestation: null }
+      }
+
+      // Retry on 429 (rate limit) and 5xx (server error)
+      if ((response.status === 429 || response.status >= 500) && attempt < this.maxRetries) {
+        lastError = new CircleError(`IRIS API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: response.status === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+        });
+        continue
+      }
+
+      if (!response.ok) {
+        throw new CircleError(`IRIS API error: ${response.status}`, {
+          status: response.status,
+          body: text,
+          code: 'IRIS_ERROR',
+        })
+      }
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        throw new CircleError('Invalid JSON from IRIS API', {
+          status: response.status,
+          body: text,
+          code: 'PARSE_ERROR',
+        })
+      }
     }
 
-    if (!response.ok) {
-      throw new CircleError(`IRIS API error: ${response.status}`, {
-        status: response.status,
-        body: text,
-        code: 'IRIS_ERROR',
-      })
-    }
-
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new CircleError('Invalid JSON from IRIS API', {
-        status: response.status,
-        body: text,
-        code: 'PARSE_ERROR',
-      })
-    }
+    throw lastError
   }
 
   sleep(ms) {
@@ -34588,168 +34669,6 @@ function requireSafeBuffer () {
 	return safeBuffer.exports;
 }
 
-var src$1;
-var hasRequiredSrc$1;
-
-function requireSrc$1 () {
-	if (hasRequiredSrc$1) return src$1;
-	hasRequiredSrc$1 = 1;
-	// base-x encoding / decoding
-	// Copyright (c) 2018 base-x contributors
-	// Copyright (c) 2014-2018 The Bitcoin Core developers (base58.cpp)
-	// Distributed under the MIT software license, see the accompanying
-	// file LICENSE or http://www.opensource.org/licenses/mit-license.php.
-	// @ts-ignore
-	var _Buffer = requireSafeBuffer().Buffer;
-	function base (ALPHABET) {
-	  if (ALPHABET.length >= 255) { throw new TypeError('Alphabet too long') }
-	  var BASE_MAP = new Uint8Array(256);
-	  for (var j = 0; j < BASE_MAP.length; j++) {
-	    BASE_MAP[j] = 255;
-	  }
-	  for (var i = 0; i < ALPHABET.length; i++) {
-	    var x = ALPHABET.charAt(i);
-	    var xc = x.charCodeAt(0);
-	    if (BASE_MAP[xc] !== 255) { throw new TypeError(x + ' is ambiguous') }
-	    BASE_MAP[xc] = i;
-	  }
-	  var BASE = ALPHABET.length;
-	  var LEADER = ALPHABET.charAt(0);
-	  var FACTOR = Math.log(BASE) / Math.log(256); // log(BASE) / log(256), rounded up
-	  var iFACTOR = Math.log(256) / Math.log(BASE); // log(256) / log(BASE), rounded up
-	  function encode (source) {
-	    if (Array.isArray(source) || source instanceof Uint8Array) { source = _Buffer.from(source); }
-	    if (!_Buffer.isBuffer(source)) { throw new TypeError('Expected Buffer') }
-	    if (source.length === 0) { return '' }
-	        // Skip & count leading zeroes.
-	    var zeroes = 0;
-	    var length = 0;
-	    var pbegin = 0;
-	    var pend = source.length;
-	    while (pbegin !== pend && source[pbegin] === 0) {
-	      pbegin++;
-	      zeroes++;
-	    }
-	        // Allocate enough space in big-endian base58 representation.
-	    var size = ((pend - pbegin) * iFACTOR + 1) >>> 0;
-	    var b58 = new Uint8Array(size);
-	        // Process the bytes.
-	    while (pbegin !== pend) {
-	      var carry = source[pbegin];
-	            // Apply "b58 = b58 * 256 + ch".
-	      var i = 0;
-	      for (var it1 = size - 1; (carry !== 0 || i < length) && (it1 !== -1); it1--, i++) {
-	        carry += (256 * b58[it1]) >>> 0;
-	        b58[it1] = (carry % BASE) >>> 0;
-	        carry = (carry / BASE) >>> 0;
-	      }
-	      if (carry !== 0) { throw new Error('Non-zero carry') }
-	      length = i;
-	      pbegin++;
-	    }
-	        // Skip leading zeroes in base58 result.
-	    var it2 = size - length;
-	    while (it2 !== size && b58[it2] === 0) {
-	      it2++;
-	    }
-	        // Translate the result into a string.
-	    var str = LEADER.repeat(zeroes);
-	    for (; it2 < size; ++it2) { str += ALPHABET.charAt(b58[it2]); }
-	    return str
-	  }
-	  function decodeUnsafe (source) {
-	    if (typeof source !== 'string') { throw new TypeError('Expected String') }
-	    if (source.length === 0) { return _Buffer.alloc(0) }
-	    var psz = 0;
-	        // Skip and count leading '1's.
-	    var zeroes = 0;
-	    var length = 0;
-	    while (source[psz] === LEADER) {
-	      zeroes++;
-	      psz++;
-	    }
-	        // Allocate enough space in big-endian base256 representation.
-	    var size = (((source.length - psz) * FACTOR) + 1) >>> 0; // log(58) / log(256), rounded up.
-	    var b256 = new Uint8Array(size);
-	        // Process the characters.
-	    while (psz < source.length) {
-	            // Find code of next character
-	      var charCode = source.charCodeAt(psz);
-	            // Base map can not be indexed using char code
-	      if (charCode > 255) { return }
-	            // Decode character
-	      var carry = BASE_MAP[charCode];
-	            // Invalid character
-	      if (carry === 255) { return }
-	      var i = 0;
-	      for (var it3 = size - 1; (carry !== 0 || i < length) && (it3 !== -1); it3--, i++) {
-	        carry += (BASE * b256[it3]) >>> 0;
-	        b256[it3] = (carry % 256) >>> 0;
-	        carry = (carry / 256) >>> 0;
-	      }
-	      if (carry !== 0) { throw new Error('Non-zero carry') }
-	      length = i;
-	      psz++;
-	    }
-	        // Skip leading zeroes in b256.
-	    var it4 = size - length;
-	    while (it4 !== size && b256[it4] === 0) {
-	      it4++;
-	    }
-	    var vch = _Buffer.allocUnsafe(zeroes + (size - it4));
-	    vch.fill(0x00, 0, zeroes);
-	    var j = zeroes;
-	    while (it4 !== size) {
-	      vch[j++] = b256[it4++];
-	    }
-	    return vch
-	  }
-	  function decode (string) {
-	    var buffer = decodeUnsafe(string);
-	    if (buffer) { return buffer }
-	    throw new Error('Non-base' + BASE + ' character')
-	  }
-	  return {
-	    encode: encode,
-	    decodeUnsafe: decodeUnsafe,
-	    decode: decode
-	  }
-	}
-	src$1 = base;
-	return src$1;
-}
-
-var bs58$2;
-var hasRequiredBs58$1;
-
-function requireBs58$1 () {
-	if (hasRequiredBs58$1) return bs58$2;
-	hasRequiredBs58$1 = 1;
-	var basex = requireSrc$1();
-	var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-	bs58$2 = basex(ALPHABET);
-	return bs58$2;
-}
-
-var bs58Exports = requireBs58$1();
-var bs58$1 = /*@__PURE__*/getDefaultExportFromCjs(bs58Exports);
-
-/**
- * SHA2-256 a.k.a. sha256. In JS, it is the fastest hash, even faster than Blake3.
- *
- * To break sha256 using birthday attack, attackers need to try 2^128 hashes.
- * BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
- *
- * Check out [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
- * @module
- * @deprecated
- */
-/** @deprecated Use import from `noble/hashes/sha2` module */
-const sha256 = sha256$1;
-
-var lib$1 = {};
-
 var src;
 var hasRequiredSrc;
 
@@ -34881,18 +34800,36 @@ function requireSrc () {
 	return src;
 }
 
-var bs58;
+var bs58$1;
 var hasRequiredBs58;
 
 function requireBs58 () {
-	if (hasRequiredBs58) return bs58;
+	if (hasRequiredBs58) return bs58$1;
 	hasRequiredBs58 = 1;
 	var basex = requireSrc();
 	var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
-	bs58 = basex(ALPHABET);
-	return bs58;
+	bs58$1 = basex(ALPHABET);
+	return bs58$1;
 }
+
+var bs58Exports = requireBs58();
+var bs58 = /*@__PURE__*/getDefaultExportFromCjs(bs58Exports);
+
+/**
+ * SHA2-256 a.k.a. sha256. In JS, it is the fastest hash, even faster than Blake3.
+ *
+ * To break sha256 using birthday attack, attackers need to try 2^128 hashes.
+ * BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
+ *
+ * Check out [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
+ * @module
+ * @deprecated
+ */
+/** @deprecated Use import from `noble/hashes/sha2` module */
+const sha256 = sha256$1;
+
+var lib$1 = {};
 
 // This is free and unencumbered software released into the public domain.
 // See LICENSE.md for more information.
@@ -122237,7 +122174,7 @@ class PublicKey extends Struct {
     } else {
       if (typeof value === 'string') {
         // assume base 58 encoding by default
-        const decoded = bs58$1.decode(value);
+        const decoded = bs58.decode(value);
         if (decoded.length != PUBLIC_KEY_LENGTH) {
           throw new Error(`Invalid public key input`);
         }
@@ -122276,7 +122213,7 @@ class PublicKey extends Struct {
    * Return the base-58 representation of the public key
    */
   toBase58() {
-    return bs58$1.encode(this.toBytes());
+    return bs58.encode(this.toBytes());
   }
   toJSON() {
     return this.toBase58();
@@ -124486,10 +124423,12 @@ async function run() {
     // Summary disabled — @actions/core Summary throws unhandled rejections
     // in environments without GITHUB_STEP_SUMMARY set.
   } catch (error) {
-    if (error instanceof CircleError) {
-      coreExports.setFailed(`Circle error (${error.code}): ${error.message}`);
+    if (error instanceof W3ActionError) {
+      handleError(error);
+    } else if (error instanceof CircleError) {
+      handleError(new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }));
     } else {
-      coreExports.setFailed(error.message);
+      handleError(error);
     }
   }
 }
@@ -124518,7 +124457,7 @@ async function runWaitForAttestation(client) {
 
   // V1 fallback: use message-hash
   if (!messageHash) {
-    throw new Error('Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+    throw new W3ActionError('MISSING_INPUT', 'Either tx-hash + source-domain (V2) or message-hash (V1) is required')
   }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
