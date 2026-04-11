@@ -70,7 +70,9 @@ export async function run() {
     if (error instanceof W3ActionError) {
       handleError(error)
     } else if (error instanceof CircleError) {
-      handleError(new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }))
+      handleError(
+        new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }),
+      )
     } else {
       handleError(error)
     }
@@ -101,7 +103,10 @@ async function runWaitForAttestation(client) {
 
   // V1 fallback: use message-hash
   if (!messageHash) {
-    throw new W3ActionError('MISSING_INPUT', 'Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+    throw new W3ActionError(
+      'MISSING_INPUT',
+      'Either tx-hash + source-domain (V2) or message-hash (V1) is required',
+    )
   }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
@@ -121,7 +126,7 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = core.getInput('chain', { required: true })
   const amount = core.getInput('amount', { required: true })
-  const rpcUrl = core.getInput("rpc-url") || core.getInput("rpc_url") || undefined
+  const rpcUrl = core.getInput('rpc-url') || core.getInput('rpc_url') || undefined
   return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS, rpcUrl })
 }
 
@@ -176,7 +181,7 @@ async function runMint() {
     })
   }
 
-  const rpcUrl = core.getInput("rpc-url") || core.getInput("rpc_url") || undefined
+  const rpcUrl = core.getInput('rpc-url') || core.getInput('rpc_url') || undefined
   return mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl })
 }
 

@@ -4,14 +4,14 @@ on: workflow_dispatch
 jobs:
   transfer:
     runs-on: ubuntu-latest
-    environment: "0x892e4bbe33281932fee226828545da9128de2f498144c32b95cba70e31449267"
+    environment: '0x892e4bbe33281932fee226828545da9128de2f498144c32b95cba70e31449267'
     steps:
       - name: Approve USDC spend
         uses: w3-io/w3-circle-action@v0
         with:
           command: approve-burn
           chain: ethereum-sepolia
-          amount: "0.01"
+          amount: '0.01'
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
       - name: Burn USDC on Sepolia
@@ -22,7 +22,7 @@ jobs:
           chain: ethereum-sepolia
           destination-chain: avalanche-fuji
           destination-address: ${{ secrets.CCTP_RECIPIENT }}
-          amount: "0.01"
+          amount: '0.01'
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
       - name: Wait for attestation
@@ -32,9 +32,9 @@ jobs:
         with:
           command: wait-for-attestation
           message-hash: ${{ fromJSON(steps.burn.outputs.result).messageHash }}
-          sandbox: "true"
-          poll-interval: "15"
-          max-attempts: "80"
+          sandbox: 'true'
+          poll-interval: '15'
+          max-attempts: '80'
 
       - name: Mint USDC on Fuji
         uses: w3-io/w3-circle-action@v0

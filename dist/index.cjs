@@ -27489,7 +27489,15 @@ class CircleError extends Error {
 }
 
 class CircleClient {
-  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30, maxRetries = 3 } = {}) {
+  constructor({
+    apiKey,
+    apiUrl,
+    entitySecret,
+    irisUrl,
+    sandbox = false,
+    timeout = 30,
+    maxRetries = 3,
+  } = {}) {
     this.apiKey = apiKey || null;
     this.entitySecret = entitySecret || null;
     this.cachedPublicKey = null;
@@ -27684,10 +27692,9 @@ class CircleClient {
       }
     }
 
-    throw new CircleError(
-      `V2 attestation not ready after ${maxAttempts} attempts`,
-      { code: 'ATTESTATION_TIMEOUT' },
-    )
+    throw new CircleError(`V2 attestation not ready after ${maxAttempts} attempts`, {
+      code: 'ATTESTATION_TIMEOUT',
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -28664,7 +28671,8 @@ async function burn({
 }) {
   const sourceInfo = domains[chain];
   const destInfo = domains[destinationChain];
-  if (!sourceInfo) throw new CircleError(`Unknown source chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
+  if (!sourceInfo)
+    throw new CircleError(`Unknown source chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
   if (!destInfo) {
     throw new CircleError(`Unknown destination chain: ${destinationChain}`, {
       code: 'UNKNOWN_CHAIN',
@@ -28710,7 +28718,15 @@ async function burn({
     network,
     contract: chainContracts.tokenMessenger,
     method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-    args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
+    args: [
+      parsedAmount,
+      destInfo.domain,
+      mintRecipient,
+      sourceInfo.usdc,
+      callerBytes32,
+      DEFAULT_MAX_FEE,
+      '0',
+    ],
     ...rpc,
   });
 
@@ -124030,10 +124046,7 @@ LayoutExports.seq(LayoutExports.struct([LayoutExports.nu64('epoch'), LayoutExpor
 // W3-332 will replace this with bridge.solana.findPda().
 
 function findPda(programId, seeds) {
-  return PublicKey.findProgramAddressSync(
-    seeds,
-    new PublicKey(programId),
-  )
+  return PublicKey.findProgramAddressSync(seeds, new PublicKey(programId))
 }
 
 function uint32BE(n) {
@@ -124118,7 +124131,14 @@ function resolveChain(chain, contracts, domains) {
 /**
  * Mint USDC on Solana by calling receiveMessage on MessageTransmitter V2.
  */
-async function mintSolana({ chain, messageBytes, attestation, contracts, domains, rpcUrl }) {
+async function mintSolana({
+  chain,
+  messageBytes,
+  attestation,
+  contracts,
+  domains,
+  rpcUrl: _rpcUrl,
+}) {
   if (!messageBytes) {
     throw new CircleError('message-bytes is required', { code: 'MISSING_MESSAGE_BYTES' })
   }
@@ -124156,11 +124176,7 @@ async function mintSolana({ chain, messageBytes, attestation, contracts, domains
     Buffer.from('local_token'),
     new PublicKey(usdcMint).toBuffer(),
   ]);
-  const [tokenPair] = findPda(tmmId, [
-    Buffer.from('token_pair'),
-    uint32BE(sourceDomain),
-    burnToken,
-  ]);
+  const [tokenPair] = findPda(tmmId, [Buffer.from('token_pair'), uint32BE(sourceDomain), burnToken]);
   const feeRecipientAta = getAta(usdcMint, mintRecipientB58); // fee goes to recipient
   const recipientAta = getAta(usdcMint, mintRecipientB58);
   const [custody] = findPda(tmmId, [Buffer.from('custody'), new PublicKey(usdcMint).toBuffer()]);
@@ -124171,8 +124187,11 @@ async function mintSolana({ chain, messageBytes, attestation, contracts, domains
   const attData = Buffer.from(attestation.replace(/^0x/, ''), 'hex');
   const data =
     '0x' +
-    Buffer.concat([anchorDiscriminator('receive_message'), borshVec(msgData), borshVec(attData)])
-      .toString('hex');
+    Buffer.concat([
+      anchorDiscriminator('receive_message'),
+      borshVec(msgData),
+      borshVec(attData),
+    ]).toString('hex');
 
   const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
   const SYSTEM = '11111111111111111111111111111111';
@@ -124426,7 +124445,9 @@ async function run() {
     if (error instanceof W3ActionError) {
       handleError(error);
     } else if (error instanceof CircleError) {
-      handleError(new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }));
+      handleError(
+        new W3ActionError(error.code || 'API_ERROR', error.message, { statusCode: error.status }),
+      );
     } else {
       handleError(error);
     }
@@ -124457,7 +124478,10 @@ async function runWaitForAttestation(client) {
 
   // V1 fallback: use message-hash
   if (!messageHash) {
-    throw new W3ActionError('MISSING_INPUT', 'Either tx-hash + source-domain (V2) or message-hash (V1) is required')
+    throw new W3ActionError(
+      'MISSING_INPUT',
+      'Either tx-hash + source-domain (V2) or message-hash (V1) is required',
+    )
   }
   return client.waitForAttestation(messageHash, { pollInterval, maxAttempts })
 }
@@ -124477,7 +124501,7 @@ async function runGetDomainInfo(client) {
 async function runApproveBurn() {
   const chain = coreExports.getInput('chain', { required: true });
   const amount = coreExports.getInput('amount', { required: true });
-  coreExports.getInput("rpc-url") || coreExports.getInput("rpc_url") || undefined;
+  coreExports.getInput('rpc-url') || coreExports.getInput('rpc_url') || undefined;
   return approveBurn({ chain, amount, domains: DOMAINS, contracts: CONTRACTS})
 }
 
@@ -124532,7 +124556,7 @@ async function runMint() {
     })
   }
 
-  const rpcUrl = coreExports.getInput("rpc-url") || coreExports.getInput("rpc_url") || undefined;
+  const rpcUrl = coreExports.getInput('rpc-url') || coreExports.getInput('rpc_url') || undefined;
   return mint({ chain, messageBytes, attestation, contracts: CONTRACTS, rpcUrl })
 }
 

@@ -19,10 +19,7 @@ import { CircleError } from './circle.js'
 // W3-332 will replace this with bridge.solana.findPda().
 
 function findPda(programId, seeds) {
-  return PublicKey.findProgramAddressSync(
-    seeds,
-    new PublicKey(programId),
-  )
+  return PublicKey.findProgramAddressSync(seeds, new PublicKey(programId))
 }
 
 function uint32BE(n) {
@@ -107,7 +104,14 @@ function resolveChain(chain, contracts, domains) {
 /**
  * Mint USDC on Solana by calling receiveMessage on MessageTransmitter V2.
  */
-export async function mintSolana({ chain, messageBytes, attestation, contracts, domains, rpcUrl }) {
+export async function mintSolana({
+  chain,
+  messageBytes,
+  attestation,
+  contracts,
+  domains,
+  rpcUrl: _rpcUrl,
+}) {
   if (!messageBytes) {
     throw new CircleError('message-bytes is required', { code: 'MISSING_MESSAGE_BYTES' })
   }
@@ -145,11 +149,7 @@ export async function mintSolana({ chain, messageBytes, attestation, contracts, 
     Buffer.from('local_token'),
     new PublicKey(usdcMint).toBuffer(),
   ])
-  const [tokenPair] = findPda(tmmId, [
-    Buffer.from('token_pair'),
-    uint32BE(sourceDomain),
-    burnToken,
-  ])
+  const [tokenPair] = findPda(tmmId, [Buffer.from('token_pair'), uint32BE(sourceDomain), burnToken])
   const feeRecipientAta = getAta(usdcMint, mintRecipientB58) // fee goes to recipient
   const recipientAta = getAta(usdcMint, mintRecipientB58)
   const [custody] = findPda(tmmId, [Buffer.from('custody'), new PublicKey(usdcMint).toBuffer()])
@@ -160,8 +160,11 @@ export async function mintSolana({ chain, messageBytes, attestation, contracts, 
   const attData = Buffer.from(attestation.replace(/^0x/, ''), 'hex')
   const data =
     '0x' +
-    Buffer.concat([anchorDiscriminator('receive_message'), borshVec(msgData), borshVec(attData)])
-      .toString('hex')
+    Buffer.concat([
+      anchorDiscriminator('receive_message'),
+      borshVec(msgData),
+      borshVec(attData),
+    ]).toString('hex')
 
   const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
   const SYSTEM = '11111111111111111111111111111111'

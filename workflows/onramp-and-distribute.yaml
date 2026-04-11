@@ -9,7 +9,7 @@ on:
         required: true
       customer-id:
         type: string
-        description: "Iron customer ID"
+        description: 'Iron customer ID'
         required: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
         with:
           command: get-quote
           api-key: ${{ secrets.IRON_API_KEY }}
-          api-url: "https://api.sandbox.iron.xyz"
+          api-url: 'https://api.sandbox.iron.xyz'
           customer-id: ${{ inputs.customer-id }}
           source-currency: USD
           destination-currency: USDC
@@ -38,7 +38,7 @@ jobs:
         with:
           command: create-autoramp
           api-key: ${{ secrets.IRON_API_KEY }}
-          api-url: "https://api.sandbox.iron.xyz"
+          api-url: 'https://api.sandbox.iron.xyz'
           body: |
             {
               "customer_id": "${{ inputs.customer-id }}",
@@ -53,7 +53,7 @@ jobs:
         with:
           command: sandbox-update-transaction
           api-key: ${{ secrets.IRON_API_KEY }}
-          api-url: "https://api.sandbox.iron.xyz"
+          api-url: 'https://api.sandbox.iron.xyz'
           autoramp-id: ${{ fromJSON(steps.onramp.outputs.result).id }}
           sandbox-status: completed
 
@@ -69,10 +69,10 @@ jobs:
           network: avalanche
           read:
             read-contract:
-              contract: "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
-              method: "function balanceOf(address) returns (uint256)"
-              args: ["${{ secrets.AVAX_WALLET_ADDRESS }}"]
-              rpcUrl: "${{ secrets.AVALANCHE_RPC_URL }}"
+              contract: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e'
+              method: 'function balanceOf(address) returns (uint256)'
+              args: ['${{ secrets.AVAX_WALLET_ADDRESS }}']
+              rpcUrl: '${{ secrets.AVALANCHE_RPC_URL }}'
 
       - name: Calculate shares
         id: shares
@@ -87,7 +87,7 @@ jobs:
       # Leg 1: CCTP Avalanche → Base (1/3)
       # ─────────────────────────────────────────────────────────
 
-      - name: "Base: Approve burn"
+      - name: 'Base: Approve burn'
         uses: w3-io/w3-circle-action@v0
         with:
           command: approve-burn
@@ -95,7 +95,7 @@ jobs:
           amount: ${{ steps.shares.outputs.third }}
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
-      - name: "Base: Burn USDC on Avalanche"
+      - name: 'Base: Burn USDC on Avalanche'
         id: burn-base
         uses: w3-io/w3-circle-action@v0
         with:
@@ -110,7 +110,7 @@ jobs:
       # Leg 2: CCTP Avalanche → Solana (1/3)
       # ─────────────────────────────────────────────────────────
 
-      - name: "Solana: Approve burn"
+      - name: 'Solana: Approve burn'
         uses: w3-io/w3-circle-action@v0
         with:
           command: approve-burn
@@ -118,7 +118,7 @@ jobs:
           amount: ${{ steps.shares.outputs.third }}
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
-      - name: "Solana: Burn USDC on Avalanche"
+      - name: 'Solana: Burn USDC on Avalanche'
         id: burn-solana
         uses: w3-io/w3-circle-action@v0
         with:
@@ -133,31 +133,31 @@ jobs:
       # Wait for both attestations
       # ─────────────────────────────────────────────────────────
 
-      - name: "Base: Wait for attestation"
+      - name: 'Base: Wait for attestation'
         id: attest-base
         uses: w3-io/w3-circle-action@v0
         timeout-minutes: 25
         with:
           command: wait-for-attestation
           message-hash: ${{ fromJSON(steps.burn-base.outputs.result).messageHash }}
-          poll-interval: "15"
-          max-attempts: "80"
+          poll-interval: '15'
+          max-attempts: '80'
 
-      - name: "Solana: Wait for attestation"
+      - name: 'Solana: Wait for attestation'
         id: attest-solana
         uses: w3-io/w3-circle-action@v0
         timeout-minutes: 25
         with:
           command: wait-for-attestation
           message-hash: ${{ fromJSON(steps.burn-solana.outputs.result).messageHash }}
-          poll-interval: "15"
-          max-attempts: "80"
+          poll-interval: '15'
+          max-attempts: '80'
 
       # ─────────────────────────────────────────────────────────
       # Mint on destination chains
       # ─────────────────────────────────────────────────────────
 
-      - name: "Base: Mint USDC"
+      - name: 'Base: Mint USDC'
         uses: w3-io/w3-circle-action@v0
         with:
           command: mint
@@ -166,7 +166,7 @@ jobs:
           attestation: ${{ fromJSON(steps.attest-base.outputs.result).attestation }}
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
-      - name: "Solana: Mint USDC"
+      - name: 'Solana: Mint USDC'
         uses: w3-io/w3-circle-action@v0
         with:
           command: mint
