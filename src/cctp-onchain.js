@@ -93,7 +93,8 @@ export async function burn({
 }) {
   const sourceInfo = domains[chain]
   const destInfo = domains[destinationChain]
-  if (!sourceInfo) throw new CircleError(`Unknown source chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
+  if (!sourceInfo)
+    throw new CircleError(`Unknown source chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
   if (!destInfo) {
     throw new CircleError(`Unknown destination chain: ${destinationChain}`, {
       code: 'UNKNOWN_CHAIN',
@@ -139,7 +140,15 @@ export async function burn({
     network,
     contract: chainContracts.tokenMessenger,
     method: 'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
-    args: [parsedAmount, destInfo.domain, mintRecipient, sourceInfo.usdc, callerBytes32, DEFAULT_MAX_FEE, '0'],
+    args: [
+      parsedAmount,
+      destInfo.domain,
+      mintRecipient,
+      sourceInfo.usdc,
+      callerBytes32,
+      DEFAULT_MAX_FEE,
+      '0',
+    ],
     ...rpc,
   })
 

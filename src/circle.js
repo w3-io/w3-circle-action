@@ -160,7 +160,15 @@ export class CircleError extends Error {
 }
 
 export class CircleClient {
-  constructor({ apiKey, apiUrl, entitySecret, irisUrl, sandbox = false, timeout = 30, maxRetries = 3 } = {}) {
+  constructor({
+    apiKey,
+    apiUrl,
+    entitySecret,
+    irisUrl,
+    sandbox = false,
+    timeout = 30,
+    maxRetries = 3,
+  } = {}) {
     this.apiKey = apiKey || null
     this.entitySecret = entitySecret || null
     this.cachedPublicKey = null
@@ -355,10 +363,9 @@ export class CircleClient {
       }
     }
 
-    throw new CircleError(
-      `V2 attestation not ready after ${maxAttempts} attempts`,
-      { code: 'ATTESTATION_TIMEOUT' },
-    )
+    throw new CircleError(`V2 attestation not ready after ${maxAttempts} attempts`, {
+      code: 'ATTESTATION_TIMEOUT',
+    })
   }
 
   // ---------------------------------------------------------------------------
