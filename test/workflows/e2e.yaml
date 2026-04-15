@@ -1,0 +1,94 @@
+# E2E Test Workflow
+#
+# Exercises every command against real APIs.
+# Run on a local W3 network with:
+#   w3 workflow deploy test/workflows/e2e.yaml
+#   w3 workflow "circle-e2e" trigger
+#
+# Prerequisites:
+#   - W3 local network running (make dev)
+#   - W3_SECRET_CIRCLE_API_KEY set to a Circle Platform API key
+#   - W3_SECRET_CIRCLE_ENTITY_SECRET set to the entity secret (32-byte hex)
+#   - CCTP on-chain commands require a funded wallet private key and RPC URL
+
+name: circle-e2e
+
+steps:
+  # ── CCTP Discovery ─────────────────────────────────────────────────────
+
+  - name: Get supported CCTP chains
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: get-supported-chains
+      sandbox: "true"
+
+  - name: Get domain info for Ethereum Sepolia
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: get-domain-info
+      chain: ethereum-sepolia
+      sandbox: "true"
+
+  # ── Wallet Sets ────────────────────────────────────────────────────────
+
+  - name: Create a wallet set
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: create-wallet-set
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+      name: E2E Test Wallet Set
+
+  # ── Wallets ────────────────────────────────────────────────────────────
+
+  - name: Create a wallet on ETH Sepolia
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: create-wallet
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+      wallet-set-id: ${{ steps.create-a-wallet-set.outputs.result.walletSet.id }}
+      blockchains: ETH-SEPOLIA
+      count: "1"
+
+  - name: List wallets
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: list-wallets
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      page-size: "5"
+
+  - name: Get the created wallet
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: get-wallet
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+
+  - name: Get wallet balance
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: get-balance
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+
+  # ── Transactions ───────────────────────────────────────────────────────
+
+  - name: Estimate transfer fee
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: estimate-fee
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      amount: "0.01"
+      destination-address: "0x0000000000000000000000000000000000000001"
+      wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+
+  # ── Compliance ─────────────────────────────────────────────────────────
+
+  - name: Screen an address for compliance
+    uses: w3-io/w3-circle-action@v0
+    with:
+      command: screen-address
+      api-key: ${{ secrets.CIRCLE_API_KEY }}
+      address: "0x0000000000000000000000000000000000000001"
+      chain: ETH
