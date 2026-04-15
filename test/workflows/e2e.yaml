@@ -49,76 +49,77 @@ jobs:
       # ── Setup ──────────────────────────────────────────────────────────────
       # SKIP: register-entity-secret requires a fresh entity-secret (one-time setup)
 
-      # ── Wallet Sets ────────────────────────────────────────────────────────
-
-      - name: Create a wallet set
-        id: create_wallet_set
-        uses: w3-io/w3-circle-action@v0
-        with:
-          command: create-wallet-set
-          api-key: ${{ secrets.CIRCLE_API_KEY }}
-          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-          name: E2E Test Wallet Set
-
-      - name: Extract wallet set ID
-        id: wallet_set
-        run: |
-          echo "id=$(echo '${{ steps.create_wallet_set.outputs.result }}' | jq -r '.walletSet.id')" >> "$GITHUB_OUTPUT"
-
-      # ── Wallets ────────────────────────────────────────────────────────────
-
-      - name: Create a wallet on ETH Sepolia
-        id: create_wallet
-        uses: w3-io/w3-circle-action@v0
-        with:
-          command: create-wallet
-          api-key: ${{ secrets.CIRCLE_API_KEY }}
-          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-          wallet-set-id: ${{ steps.wallet_set.outputs.id }}
-          blockchains: ETH-SEPOLIA
-          count: "1"
-
-      - name: Extract wallet ID and address
-        id: wallet
-        run: |
-          echo "id=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].id')" >> "$GITHUB_OUTPUT"
-          echo "address=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].address')" >> "$GITHUB_OUTPUT"
-
-      - name: List wallets
-        uses: w3-io/w3-circle-action@v0
-        with:
-          command: list-wallets
-          api-key: ${{ secrets.CIRCLE_API_KEY }}
-          page-size: "5"
-
-      - name: Get the created wallet
-        uses: w3-io/w3-circle-action@v0
-        with:
-          command: get-wallet
-          api-key: ${{ secrets.CIRCLE_API_KEY }}
-          wallet-id: ${{ steps.wallet.outputs.id }}
-
-      - name: Get wallet balance
-        uses: w3-io/w3-circle-action@v0
-        with:
-          command: get-balance
-          api-key: ${{ secrets.CIRCLE_API_KEY }}
-          wallet-id: ${{ steps.wallet.outputs.id }}
-
-      # ── Transactions ───────────────────────────────────────────────────────
-      # SKIP: transfer requires funded wallet with token balance
-      # SKIP: get-transaction requires a transaction ID from a completed transfer
-      # SKIP: estimate-fee requires funded wallet (sandbox returns errors on zero balance)
-
-      # ── Compliance ─────────────────────────────────────────────────────────
-
-      #       # SKIP: screen-address returns 400 in sandbox environment.
-      #       # Circle Compliance API requires a production API key; the sandbox
-      #       # does not support compliance endpoints.
-      #       # - name: Screen an address for compliance
-      #       #   uses: w3-io/w3-circle-action@v0
-      #       #   with:
-      #       #     command: screen-address
-      #       #     api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #     address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-      #     blockchain: ETH
+      # SKIP: wallet operations require CIRCLE_ENTITY_SECRET credential
+      #       # ── Wallet Sets ────────────────────────────────────────────────────────
+      # 
+      #       - name: Create a wallet set
+      #         id: create_wallet_set
+      #         uses: w3-io/w3-circle-action@v0
+      #         with:
+      #           command: create-wallet-set
+      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #           entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+      #           name: E2E Test Wallet Set
+      # 
+      #       - name: Extract wallet set ID
+      #         id: wallet_set
+      #         run: |
+      #           echo "id=$(echo '${{ steps.create_wallet_set.outputs.result }}' | jq -r '.walletSet.id')" >> "$GITHUB_OUTPUT"
+      # 
+      #       # ── Wallets ────────────────────────────────────────────────────────────
+      # 
+      #       - name: Create a wallet on ETH Sepolia
+      #         id: create_wallet
+      #         uses: w3-io/w3-circle-action@v0
+      #         with:
+      #           command: create-wallet
+      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #           entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+      #           wallet-set-id: ${{ steps.wallet_set.outputs.id }}
+      #           blockchains: ETH-SEPOLIA
+      #           count: "1"
+      # 
+      #       - name: Extract wallet ID and address
+      #         id: wallet
+      #         run: |
+      #           echo "id=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].id')" >> "$GITHUB_OUTPUT"
+      #           echo "address=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].address')" >> "$GITHUB_OUTPUT"
+      # 
+      #       - name: List wallets
+      #         uses: w3-io/w3-circle-action@v0
+      #         with:
+      #           command: list-wallets
+      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #           page-size: "5"
+      # 
+      #       - name: Get the created wallet
+      #         uses: w3-io/w3-circle-action@v0
+      #         with:
+      #           command: get-wallet
+      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #           wallet-id: ${{ steps.wallet.outputs.id }}
+      # 
+      #       - name: Get wallet balance
+      #         uses: w3-io/w3-circle-action@v0
+      #         with:
+      #           command: get-balance
+      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #           wallet-id: ${{ steps.wallet.outputs.id }}
+      # 
+      #       # ── Transactions ───────────────────────────────────────────────────────
+      #       # SKIP: transfer requires funded wallet with token balance
+      #       # SKIP: get-transaction requires a transaction ID from a completed transfer
+      #       # SKIP: estimate-fee requires funded wallet (sandbox returns errors on zero balance)
+      # 
+      #       # ── Compliance ─────────────────────────────────────────────────────────
+      # 
+      #       #       # SKIP: screen-address returns 400 in sandbox environment.
+      #       #       # Circle Compliance API requires a production API key; the sandbox
+      #       #       # does not support compliance endpoints.
+      #       #       # - name: Screen an address for compliance
+      #       #       #   uses: w3-io/w3-circle-action@v0
+      #       #       #   with:
+      #       #       #     command: screen-address
+      #       #       #     api-key: ${{ secrets.CIRCLE_API_KEY }}
+      #       #     address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+      #       #     blockchain: ETH
