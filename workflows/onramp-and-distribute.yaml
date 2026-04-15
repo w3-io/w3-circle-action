@@ -96,7 +96,7 @@ jobs:
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
       - name: 'Base: Burn USDC on Avalanche'
-        id: burn-base
+        id: burn_base
         uses: w3-io/w3-circle-action@v0
         with:
           command: burn
@@ -119,7 +119,7 @@ jobs:
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
       - name: 'Solana: Burn USDC on Avalanche'
-        id: burn-solana
+        id: burn_solana
         uses: w3-io/w3-circle-action@v0
         with:
           command: burn
@@ -134,22 +134,22 @@ jobs:
       # ─────────────────────────────────────────────────────────
 
       - name: 'Base: Wait for attestation'
-        id: attest-base
+        id: attest_base
         uses: w3-io/w3-circle-action@v0
         timeout-minutes: 25
         with:
           command: wait-for-attestation
-          message-hash: ${{ fromJSON(steps.burn-base.outputs.result).messageHash }}
+          message-hash: ${{ fromJSON(steps.burn_base.outputs.result).messageHash }}
           poll-interval: '15'
           max-attempts: '80'
 
       - name: 'Solana: Wait for attestation'
-        id: attest-solana
+        id: attest_solana
         uses: w3-io/w3-circle-action@v0
         timeout-minutes: 25
         with:
           command: wait-for-attestation
-          message-hash: ${{ fromJSON(steps.burn-solana.outputs.result).messageHash }}
+          message-hash: ${{ fromJSON(steps.burn_solana.outputs.result).messageHash }}
           poll-interval: '15'
           max-attempts: '80'
 
@@ -162,8 +162,8 @@ jobs:
         with:
           command: mint
           chain: base
-          message-bytes: ${{ fromJSON(steps.burn-base.outputs.result).messageBytes }}
-          attestation: ${{ fromJSON(steps.attest-base.outputs.result).attestation }}
+          message-bytes: ${{ fromJSON(steps.burn_base.outputs.result).messageBytes }}
+          attestation: ${{ fromJSON(steps.attest_base.outputs.result).attestation }}
           private-key: ${{ secrets.CCTP_PRIVATE_KEY }}
 
       - name: 'Solana: Mint USDC'
@@ -171,8 +171,8 @@ jobs:
         with:
           command: mint
           chain: solana
-          message-bytes: ${{ fromJSON(steps.burn-solana.outputs.result).messageBytes }}
-          attestation: ${{ fromJSON(steps.attest-solana.outputs.result).attestation }}
+          message-bytes: ${{ fromJSON(steps.burn_solana.outputs.result).messageBytes }}
+          attestation: ${{ fromJSON(steps.attest_solana.outputs.result).attestation }}
           private-key: ${{ secrets.SOLANA_PRIVATE_KEY }}
 
       # ─────────────────────────────────────────────────────────

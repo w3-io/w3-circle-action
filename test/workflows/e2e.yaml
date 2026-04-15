@@ -37,6 +37,7 @@ jobs:
       # ── Wallet Sets ────────────────────────────────────────────────────────
 
       - name: Create a wallet set
+        id: create_wallet_set
         uses: w3-io/w3-circle-action@v0
         with:
           command: create-wallet-set
@@ -47,14 +48,20 @@ jobs:
       # ── Wallets ────────────────────────────────────────────────────────────
 
       - name: Create a wallet on ETH Sepolia
+        id: create_wallet
         uses: w3-io/w3-circle-action@v0
         with:
           command: create-wallet
           api-key: ${{ secrets.CIRCLE_API_KEY }}
           entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-          wallet-set-id: ${{ steps.create-a-wallet-set.outputs.result.walletSet.id }}
+          wallet-set-id: ${{ steps.create_wallet_set.outputs.result.walletSet.id }}
           blockchains: ETH-SEPOLIA
           count: "1"
+
+      - name: Extract wallet ID
+        id: wallet
+        run: |
+          echo "id=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].id')" >> "$GITHUB_OUTPUT"
 
       - name: List wallets
         uses: w3-io/w3-circle-action@v0
@@ -68,14 +75,14 @@ jobs:
         with:
           command: get-wallet
           api-key: ${{ secrets.CIRCLE_API_KEY }}
-          wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+          wallet-id: ${{ steps.wallet.outputs.id }}
 
       - name: Get wallet balance
         uses: w3-io/w3-circle-action@v0
         with:
           command: get-balance
           api-key: ${{ secrets.CIRCLE_API_KEY }}
-          wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+          wallet-id: ${{ steps.wallet.outputs.id }}
 
       # ── Transactions ───────────────────────────────────────────────────────
 
@@ -86,7 +93,7 @@ jobs:
           api-key: ${{ secrets.CIRCLE_API_KEY }}
           amount: "0.01"
           destination-address: "0x0000000000000000000000000000000000000001"
-          wallet-id: ${{ steps.create-a-wallet-on-eth-sepolia.outputs.result.wallets[0].id }}
+          wallet-id: ${{ steps.wallet.outputs.id }}
 
       # ── Compliance ─────────────────────────────────────────────────────────
 
