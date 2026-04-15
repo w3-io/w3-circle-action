@@ -80,6 +80,117 @@ commands:
         type: object
         description: '{name, domain, chainId, usdc, network, contracts}'
 
+  # -- CCTP on-chain (requires private-key + RPC) -------------------------------
+
+  - name: approve-burn
+    description: >
+      Approve the CCTP TokenMessenger contract to spend USDC before burning.
+      Must be called before the burn command on EVM chains.
+    inputs:
+      chain:
+        type: string
+        required: true
+        description: 'Source chain name (e.g. ethereum-sepolia, avalanche-fuji)'
+      amount:
+        type: string
+        required: true
+        description: 'USDC amount to approve (human units, e.g. "10.0")'
+      rpc-url:
+        type: string
+        required: false
+        description: Custom RPC endpoint URL (uses default if omitted)
+    outputs:
+      result:
+        type: object
+        description: '{txHash, amount, chain}'
+
+  - name: burn
+    description: >
+      Burn USDC on the source chain to initiate a CCTP cross-chain transfer.
+      Call approve-burn first on EVM chains, then burn, then wait-for-attestation,
+      then mint on the destination chain.
+    inputs:
+      chain:
+        type: string
+        required: true
+        description: 'Source chain name (e.g. ethereum-sepolia)'
+      destination-chain:
+        type: string
+        required: true
+        description: 'Destination chain name (e.g. avalanche-fuji)'
+      destination-address:
+        type: string
+        required: true
+        description: Recipient address on the destination chain
+      amount:
+        type: string
+        required: true
+        description: 'USDC amount to burn (human units, e.g. "10.0")'
+      destination-caller:
+        type: string
+        required: false
+        description: Address permitted to call receiveMessage on destination (0x0 = anyone)
+      rpc-url:
+        type: string
+        required: false
+        description: Custom RPC endpoint URL (uses default if omitted)
+    outputs:
+      result:
+        type: object
+        description: '{txHash, messageHash, messageBytes, sourceDomain, destinationDomain}'
+
+  - name: mint
+    description: >
+      Receive USDC on the destination chain by calling receiveMessage with the
+      attestation from Circle. Final step of a CCTP cross-chain transfer.
+    inputs:
+      chain:
+        type: string
+        required: true
+        description: 'Destination chain name (e.g. avalanche-fuji)'
+      message-bytes:
+        type: string
+        required: true
+        description: Raw CCTP message bytes from the burn transaction
+      attestation:
+        type: string
+        required: true
+        description: Attestation signature from Circle attestation service
+      rpc-url:
+        type: string
+        required: false
+        description: Custom RPC endpoint URL (uses default if omitted)
+    outputs:
+      result:
+        type: object
+        description: '{txHash, chain}'
+
+  - name: replace-message
+    description: >
+      Replace a pending CCTP message before it is received on the destination
+      chain. Useful for changing the destination caller after burn.
+    inputs:
+      chain:
+        type: string
+        required: true
+        description: 'Chain where the original message was sent'
+      original-message-bytes:
+        type: string
+        required: true
+        description: Original CCTP message bytes from the burn transaction
+      original-attestation:
+        type: string
+        required: true
+        description: Original attestation signature from Circle
+      destination-caller:
+        type: string
+        required: false
+        description: New address permitted to call receiveMessage on destination
+    outputs:
+      result:
+        type: object
+        description: '{txHash, messageHash, messageBytes}'
+
   # -- Setup (Platform API, requires api-key + entity-secret) -------------------
 
   - name: register-entity-secret
@@ -251,6 +362,10 @@ commands:
         type: string
         required: true
         description: Blockchain address to screen
+      blockchain:
+        type: string
+        required: true
+        description: 'Blockchain identifier (e.g. "ETH", "ETH-SEPOLIA")'
     outputs:
       result:
         type: object
