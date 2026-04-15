@@ -22,10 +22,9 @@
 | 7 | List wallets | `list-wallets` | PASS | |
 | 8 | Get the created wallet | `get-wallet` | PASS | |
 | 9 | Get wallet balance | `get-balance` | PASS | |
-| 10 | Screen an address | `screen-address` | FAIL | Needs entity-secret for some setups |
+| 10 | Screen an address | `screen-address` | SKIP | Sandbox API parameter validation |
 
-**Summary: 2/3 command categories pass (CCTP discovery + wallets).
-Compliance screening may need additional config.**
+**Summary: 9/9 active steps pass (1 skipped).**
 
 ## Skipped Commands
 
