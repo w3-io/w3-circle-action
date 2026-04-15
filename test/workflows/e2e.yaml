@@ -112,11 +112,13 @@ jobs:
 
       # ── Compliance ─────────────────────────────────────────────────────────
 
-      # SKIP: sandbox API parameter validation
+      # SKIP: screen-address returns 400 in sandbox environment.
+      # Circle Compliance API requires a production API key; the sandbox
+      # does not support compliance endpoints.
       # - name: Screen an address for compliance
       #   uses: w3-io/w3-circle-action@v0
       #   with:
       #     command: screen-address
       #     api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #     address: "0x0000000000000000000000000000000000000001"
+      #     address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
       #     blockchain: ETH
