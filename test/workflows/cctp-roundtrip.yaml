@@ -51,6 +51,7 @@ jobs:
         uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
         with:
           command: wait-for-attestation
+          sandbox: 'true'
           tx-hash: ${{ steps.base_burn.outputs.tx_hash }}
           source-domain: '6'
           poll-interval: '5'
@@ -96,6 +97,7 @@ jobs:
         uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
         with:
           command: wait-for-attestation
+          sandbox: 'true'
           tx-hash: ${{ steps.avax_burn.outputs.tx_hash }}
           source-domain: '1'
           poll-interval: '5'
