@@ -4,10 +4,10 @@
 
 ## Workflows
 
-| File                   | Purpose                                                  |
-| ---------------------- | -------------------------------------------------------- |
-| `e2e.yaml`             | Circle Platform API: wallets, wallet sets, balances      |
-| `cctp-roundtrip.yaml`  | CCTP V2: Base Sepolia → Avalanche Fuji → back end-to-end |
+| File                  | Purpose                                                  |
+| --------------------- | -------------------------------------------------------- |
+| `e2e.yaml`            | Circle Platform API: wallets, wallet sets, balances      |
+| `cctp-roundtrip.yaml` | CCTP V2: Base Sepolia → Avalanche Fuji → back end-to-end |
 
 ## Prerequisites
 
@@ -73,18 +73,18 @@ the Circle API key setup.
 
 ### `cctp-roundtrip.yaml` — CCTP V2 round-trip (10/10 steps PASS)
 
-| #   | Step                        | Command                | Status | Notes                    |
-| --- | --------------------------- | ---------------------- | ------ | ------------------------ |
-| 1   | Burn 1 USDC on Base         | `burn`                 | PASS   | approve + depositForBurn |
-| 2   | Extract Base burn details   | (run step)             | PASS   | tx-hash + messageBytes   |
-| 3   | Wait for Base attestation   | `wait-for-attestation` | PASS   | ~6s on sandbox           |
-| 4   | Extract Base attestation    | (run step)             | PASS   | attestation + message    |
-| 5   | Mint on Avalanche Fuji      | `mint`                 | PASS   | receiveMessage on Fuji   |
-| 6   | Burn 0.9 USDC on Fuji       | `burn`                 | PASS   | return leg               |
-| 7   | Extract Fuji burn details   | (run step)             | PASS   |                          |
-| 8   | Wait for Fuji attestation   | `wait-for-attestation` | PASS   |                          |
-| 9   | Extract Fuji attestation    | (run step)             | PASS   |                          |
-| 10  | Mint back on Base Sepolia   | `mint`                 | PASS   | round trip complete      |
+| #   | Step                      | Command                | Status | Notes                    |
+| --- | ------------------------- | ---------------------- | ------ | ------------------------ |
+| 1   | Burn 1 USDC on Base       | `burn`                 | PASS   | approve + depositForBurn |
+| 2   | Extract Base burn details | (run step)             | PASS   | tx-hash + messageBytes   |
+| 3   | Wait for Base attestation | `wait-for-attestation` | PASS   | ~6s on sandbox           |
+| 4   | Extract Base attestation  | (run step)             | PASS   | attestation + message    |
+| 5   | Mint on Avalanche Fuji    | `mint`                 | PASS   | receiveMessage on Fuji   |
+| 6   | Burn 0.9 USDC on Fuji     | `burn`                 | PASS   | return leg               |
+| 7   | Extract Fuji burn details | (run step)             | PASS   |                          |
+| 8   | Wait for Fuji attestation | `wait-for-attestation` | PASS   |                          |
+| 9   | Extract Fuji attestation  | (run step)             | PASS   |                          |
+| 10  | Mint back on Base Sepolia | `mint`                 | PASS   | round trip complete      |
 
 Round-trip wall time: **52 seconds**.
 
@@ -96,15 +96,15 @@ fast-transfer fees + L1/L2 gas.
 
 ## Skipped Commands
 
-| Command                  | Reason                                            |
-| ------------------------ | ------------------------------------------------- |
-| `transfer`               | Circle-internal transfer; needs a destination     |
-|                          | Circle wallet + token balance on it               |
-| `get-transaction`        | Needs a completed `transfer`                      |
-| `estimate-fee`           | Sandbox rejects when balance is zero              |
-| `screen-address`         | Production-only; sandbox returns 400              |
-| `register-entity-secret` | One-time; re-running errors `already exists`      |
-| `replace-message`        | Only fires when a burn message errored            |
+| Command                  | Reason                                        |
+| ------------------------ | --------------------------------------------- |
+| `transfer`               | Circle-internal transfer; needs a destination |
+|                          | Circle wallet + token balance on it           |
+| `get-transaction`        | Needs a completed `transfer`                  |
+| `estimate-fee`           | Sandbox rejects when balance is zero          |
+| `screen-address`         | Production-only; sandbox returns 400          |
+| `register-entity-secret` | One-time; re-running errors `already exists`  |
+| `replace-message`        | Only fires when a burn message errored        |
 
 ## How to run
 

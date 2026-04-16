@@ -76,8 +76,8 @@ jobs:
       # ── Leg 2: Avalanche → Base (round trip back) ──────────────────────────
 
       # Burn 0.9 back, not 1 — the mint just gave us ~0.99987 (1 minus a
-       # ~130 micro-USDC CCTP fast-transfer fee), so burning the full 1 would
-       # overdraw the wallet.
+      # ~130 micro-USDC CCTP fast-transfer fee), so burning the full 1 would
+      # overdraw the wallet.
       - name: Burn 0.9 USDC on Avalanche Fuji
         id: burn_avax
         uses: w3-io/w3-circle-action@v0
