@@ -1,17 +1,11 @@
-# E2E Test Workflow — Full Coverage
+# E2E Test Workflow
 #
-# Exercises every command against Circle APIs.
-# Run on a local W3 network with:
-#   w3 workflow deploy test/workflows/e2e.yaml
-#   w3 workflow "circle-e2e" trigger
+# Exercises Circle Platform + CCTP APIs end-to-end. Run locally with:
+#   CIRCLE_API_KEY=... CIRCLE_ENTITY_SECRET=<64-hex> \
+#     w3 workflow test --execute test/workflows/e2e.yaml
 #
-# Prerequisites:
-#   - W3 local network running (make dev)
-#   - W3_SECRET_CIRCLE_API_KEY set to a Circle Platform API key
-#   - W3_SECRET_CIRCLE_ENTITY_SECRET set to the entity secret (32-byte hex)
-#   - CCTP on-chain commands require a funded wallet private key and RPC URL
-#
-# Commands covered: 21/21 (100%)
+# Skipped steps are kept in place as commented blocks with the reason,
+# so the file doubles as a living map of what needs what to unblock.
 
 name: circle-e2e
 on:
@@ -27,103 +21,90 @@ jobs:
         uses: w3-io/w3-circle-action@v0
         with:
           command: get-supported-chains
-          sandbox: "true"
+          sandbox: 'true'
 
       - name: Get domain info for Ethereum Sepolia
         uses: w3-io/w3-circle-action@v0
         with:
           command: get-domain-info
           chain: ethereum-sepolia
-          sandbox: "true"
+          sandbox: 'true'
 
-      # ── CCTP Attestation ───────────────────────────────────────────────────
-      # SKIP: get-attestation requires a message hash from a burn transaction
-      # SKIP: wait-for-attestation requires a tx-hash + source-domain or message-hash from burn
+      # ── Wallet Sets ────────────────────────────────────────────────────────
 
-      # ── CCTP On-Chain ──────────────────────────────────────────────────────
-      # SKIP: approve-burn requires W3_SECRET_ETHEREUM private key and funded wallet
-      # SKIP: burn requires W3_SECRET_ETHEREUM private key and USDC balance
-      # SKIP: mint requires message-bytes + attestation from a completed burn
-      # SKIP: replace-message requires original message-bytes + attestation
+      - name: Create a wallet set
+        id: create_wallet_set
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: create-wallet-set
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          name: E2E Test Wallet Set
 
-      # ── Setup ──────────────────────────────────────────────────────────────
-      # SKIP: register-entity-secret requires a fresh entity-secret (one-time setup)
+      - name: Extract wallet set ID
+        id: wallet_set
+        run: |
+          echo "id=$(echo '${{ steps.create_wallet_set.outputs.result }}' | jq -r '.walletSet.id // .id')" >> "$GITHUB_OUTPUT"
 
-      # SKIP: wallet operations require CIRCLE_ENTITY_SECRET — a 32-byte
-      # hex value registered once via register-entity-secret. Until this
-      # credential is provisioned and stored as a GitHub Actions secret
-      # (secrets.CIRCLE_ENTITY_SECRET), all wallet, transaction, and
-      # compliance steps below remain skipped.
-      #       # ── Wallet Sets ────────────────────────────────────────────────────────
-      # 
-      #       - name: Create a wallet set
-      #         id: create_wallet_set
-      #         uses: w3-io/w3-circle-action@v0
-      #         with:
-      #           command: create-wallet-set
-      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #           entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-      #           name: E2E Test Wallet Set
-      # 
-      #       - name: Extract wallet set ID
-      #         id: wallet_set
-      #         run: |
-      #           echo "id=$(echo '${{ steps.create_wallet_set.outputs.result }}' | jq -r '.walletSet.id')" >> "$GITHUB_OUTPUT"
-      # 
-      #       # ── Wallets ────────────────────────────────────────────────────────────
-      # 
-      #       - name: Create a wallet on ETH Sepolia
-      #         id: create_wallet
-      #         uses: w3-io/w3-circle-action@v0
-      #         with:
-      #           command: create-wallet
-      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #           entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-      #           wallet-set-id: ${{ steps.wallet_set.outputs.id }}
-      #           blockchains: ETH-SEPOLIA
-      #           count: "1"
-      # 
-      #       - name: Extract wallet ID and address
-      #         id: wallet
-      #         run: |
-      #           echo "id=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].id')" >> "$GITHUB_OUTPUT"
-      #           echo "address=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.wallets[0].address')" >> "$GITHUB_OUTPUT"
-      # 
-      #       - name: List wallets
-      #         uses: w3-io/w3-circle-action@v0
-      #         with:
-      #           command: list-wallets
-      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #           page-size: "5"
-      # 
-      #       - name: Get the created wallet
-      #         uses: w3-io/w3-circle-action@v0
-      #         with:
-      #           command: get-wallet
-      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #           wallet-id: ${{ steps.wallet.outputs.id }}
-      # 
-      #       - name: Get wallet balance
-      #         uses: w3-io/w3-circle-action@v0
-      #         with:
-      #           command: get-balance
-      #           api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #           wallet-id: ${{ steps.wallet.outputs.id }}
-      # 
-      #       # ── Transactions ───────────────────────────────────────────────────────
-      #       # SKIP: transfer requires funded wallet with token balance
-      #       # SKIP: get-transaction requires a transaction ID from a completed transfer
-      #       # SKIP: estimate-fee requires funded wallet (sandbox returns errors on zero balance)
-      # 
-      #       # ── Compliance ─────────────────────────────────────────────────────────
-      # 
-      #       #       # SKIP: screen-address returns 400 in sandbox environment.
-      #       #       # Circle Compliance API requires a production API key; the sandbox
-      #       #       # does not support compliance endpoints.
-      #       #       # - name: Screen an address for compliance
-      #       #       #   uses: w3-io/w3-circle-action@v0
-      #       #       #   with:
-      #       #       #     command: screen-address
-      #       #       #     api-key: ${{ secrets.CIRCLE_API_KEY }}
-      #       #     address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-      #       #     blockchain: ETH
+      # ── Wallets ────────────────────────────────────────────────────────────
+
+      - name: Create a wallet on ETH Sepolia
+        id: create_wallet
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: create-wallet
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          wallet-set-id: ${{ steps.wallet_set.outputs.id }}
+          blockchains: ETH-SEPOLIA
+          count: '1'
+
+      - name: Extract wallet ID and address
+        id: wallet
+        run: |
+          echo "id=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.[0].id')" >> "$GITHUB_OUTPUT"
+          echo "address=$(echo '${{ steps.create_wallet.outputs.result }}' | jq -r '.[0].address')" >> "$GITHUB_OUTPUT"
+
+      - name: List wallets
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: list-wallets
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          page-size: '5'
+
+      - name: Get the created wallet
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: get-wallet
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          wallet-id: ${{ steps.wallet.outputs.id }}
+
+      - name: Get wallet balance
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: get-balance
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          wallet-id: ${{ steps.wallet.outputs.id }}
+
+      # ── Skipped, with reasons ──────────────────────────────────────────────
+      #
+      # CCTP Attestation:
+      #   get-attestation        — needs tx-hash + source-domain from a burn
+      #   wait-for-attestation   — same
+      #
+      # CCTP On-Chain:
+      #   approve-burn           — needs a funded wallet (ETH for gas + USDC balance)
+      #   burn                   — same, plus calls approve-burn first
+      #   mint                   — needs message-bytes + attestation from burn
+      #   replace-message        — needs an original message that errored
+      #
+      # Transactions:
+      #   transfer               — needs funded wallet with token balance
+      #   get-transaction        — needs a completed transaction ID
+      #   estimate-fee           — sandbox rejects when balance is zero
+      #
+      # Compliance:
+      #   screen-address         — production-only; sandbox returns 400
+      #
+      # Setup:
+      #   register-entity-secret — one-time, already registered for this account
