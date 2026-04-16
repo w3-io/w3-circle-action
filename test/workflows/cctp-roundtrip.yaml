@@ -62,13 +62,14 @@ jobs:
         run: |
           r='${{ steps.attest_base.outputs.result }}'
           echo "attestation=$(echo "$r" | jq -r .attestation)" >> "$GITHUB_OUTPUT"
+          echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
 
       - name: Mint on Avalanche Fuji
         uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
         with:
           command: mint
           chain: avalanche-fuji
-          message-bytes: ${{ steps.base_burn.outputs.msg_bytes }}
+          message-bytes: ${{ steps.base_attest.outputs.message }}
           attestation: ${{ steps.base_attest.outputs.attestation }}
           rpc-url: https://api.avax-test.network/ext/bc/C/rpc
 
@@ -108,12 +109,13 @@ jobs:
         run: |
           r='${{ steps.attest_avax.outputs.result }}'
           echo "attestation=$(echo "$r" | jq -r .attestation)" >> "$GITHUB_OUTPUT"
+          echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
 
       - name: Mint back on Base Sepolia
         uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
         with:
           command: mint
           chain: base-sepolia
-          message-bytes: ${{ steps.avax_burn.outputs.msg_bytes }}
+          message-bytes: ${{ steps.avax_attest.outputs.message }}
           attestation: ${{ steps.avax_attest.outputs.attestation }}
           rpc-url: https://sepolia.base.org
