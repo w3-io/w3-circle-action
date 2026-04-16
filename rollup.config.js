@@ -6,7 +6,8 @@ export default {
   input: 'src/index.js',
   output: {
     file: 'dist/index.js',
-    format: 'cjs',
+    format: 'esm',
+    inlineDynamicImports: true,
   },
   plugins: [resolve({ preferBuiltins: true }), commonjs(), json()],
 }

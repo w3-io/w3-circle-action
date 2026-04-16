@@ -1,39 +1,36 @@
-'use strict';
+import require$$0$1 from 'os';
+import require$$0$2 from 'crypto';
+import require$$1$1 from 'fs';
+import require$$1$4 from 'path';
+import require$$2$1 from 'http';
+import require$$3 from 'https';
+import require$$0$6 from 'net';
+import require$$1$2 from 'tls';
+import require$$4 from 'events';
+import require$$0$5 from 'assert';
+import require$$0$3 from 'util';
+import Stream$1 from 'stream';
+import require$$0$4, { Buffer as Buffer$1 } from 'buffer';
+import require$$8 from 'querystring';
+import require$$14 from 'stream/web';
+import { createRequire } from 'node:module';
+import require$$0$7 from 'worker_threads';
+import require$$2$2 from 'perf_hooks';
+import require$$5 from 'util/types';
+import require$$4$1 from 'async_hooks';
+import require$$1$3 from 'console';
+import Url from 'url';
+import zlib from 'zlib';
+import require$$6 from 'string_decoder';
+import require$$0$8 from 'diagnostics_channel';
+import require$$2$3 from 'child_process';
+import require$$6$1 from 'timers';
+import http from 'node:http';
+import { createHash } from 'node:crypto';
+import { getU64Codec } from '@solana/codecs-numbers';
+import require$$0$9 from 'punycode';
+import 'rpc-websockets';
 
-var require$$0$1 = require('os');
-var require$$0$2 = require('crypto');
-var require$$1$1 = require('fs');
-var require$$1$4 = require('path');
-var require$$2$1 = require('http');
-var require$$3 = require('https');
-var require$$0$6 = require('net');
-var require$$1$2 = require('tls');
-var require$$4 = require('events');
-var require$$0$5 = require('assert');
-var require$$0$3 = require('util');
-var Stream$1 = require('stream');
-var require$$0$4 = require('buffer');
-var require$$8 = require('querystring');
-var require$$14 = require('stream/web');
-var node_module = require('node:module');
-var require$$0$7 = require('worker_threads');
-var require$$2$2 = require('perf_hooks');
-var require$$5 = require('util/types');
-var require$$4$1 = require('async_hooks');
-var require$$1$3 = require('console');
-var Url = require('url');
-var zlib = require('zlib');
-var require$$6 = require('string_decoder');
-var require$$0$8 = require('diagnostics_channel');
-var require$$2$3 = require('child_process');
-var require$$6$1 = require('timers');
-var http = require('node:http');
-var node_crypto = require('node:crypto');
-var codecsNumbers = require('@solana/codecs-numbers');
-var require$$0$9 = require('punycode');
-require('rpc-websockets');
-
-var _documentCurrentScript = typeof document !== 'undefined' ? document.currentScript : null;
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
 function getDefaultExportFromCjs (x) {
@@ -1759,13 +1756,13 @@ function requireTimers () {
 
 var main = {exports: {}};
 
-const require$3 = node_module.createRequire((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index.js', document.baseURI).href)));
+const require$3 = createRequire(import.meta.url);
 function __require$2() { return require$3("node:stream"); }
 
-const require$2 = node_module.createRequire((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index.js', document.baseURI).href)));
+const require$2 = createRequire(import.meta.url);
 function __require$1() { return require$2("node:util"); }
 
-const require$1 = node_module.createRequire((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index.js', document.baseURI).href)));
+const require$1 = createRequire(import.meta.url);
 function __require() { return require$1("node:events"); }
 
 var sbmh;
@@ -122130,12 +122127,12 @@ function isOnCurve(publicKey) {
 ed25519.verify;
 
 const toBuffer = arr => {
-  if (require$$0$4.Buffer.isBuffer(arr)) {
+  if (Buffer$1.isBuffer(arr)) {
     return arr;
   } else if (arr instanceof Uint8Array) {
-    return require$$0$4.Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+    return Buffer$1.from(arr.buffer, arr.byteOffset, arr.byteLength);
   } else {
-    return require$$0$4.Buffer.from(arr);
+    return Buffer$1.from(arr);
   }
 };
 
@@ -122145,7 +122142,7 @@ class Struct {
     Object.assign(this, properties);
   }
   encode() {
-    return require$$0$4.Buffer.from(libExports.serialize(SOLANA_SCHEMA, this));
+    return Buffer$1.from(libExports.serialize(SOLANA_SCHEMA, this));
   }
   static decode(data) {
     return libExports.deserialize(SOLANA_SCHEMA, this, data);
@@ -122257,11 +122254,11 @@ class PublicKey extends Struct {
    * Return the Buffer representation of the public key in big endian
    */
   toBuffer() {
-    const b = this._bn.toArrayLike(require$$0$4.Buffer);
+    const b = this._bn.toArrayLike(Buffer$1);
     if (b.length === PUBLIC_KEY_LENGTH) {
       return b;
     }
-    const zeroPad = require$$0$4.Buffer.alloc(32);
+    const zeroPad = Buffer$1.alloc(32);
     b.copy(zeroPad, 32 - b.length);
     return zeroPad;
   }
@@ -122283,7 +122280,7 @@ class PublicKey extends Struct {
    */
   /* eslint-disable require-await */
   static async createWithSeed(fromPublicKey, seed, programId) {
-    const buffer = require$$0$4.Buffer.concat([fromPublicKey.toBuffer(), require$$0$4.Buffer.from(seed), programId.toBuffer()]);
+    const buffer = Buffer$1.concat([fromPublicKey.toBuffer(), Buffer$1.from(seed), programId.toBuffer()]);
     const publicKeyBytes = sha256(buffer);
     return new PublicKey(publicKeyBytes);
   }
@@ -122293,14 +122290,14 @@ class PublicKey extends Struct {
    */
   /* eslint-disable require-await */
   static createProgramAddressSync(seeds, programId) {
-    let buffer = require$$0$4.Buffer.alloc(0);
+    let buffer = Buffer$1.alloc(0);
     seeds.forEach(function (seed) {
       if (seed.length > MAX_SEED_LENGTH) {
         throw new TypeError(`Max seed length exceeded`);
       }
-      buffer = require$$0$4.Buffer.concat([buffer, toBuffer(seed)]);
+      buffer = Buffer$1.concat([buffer, toBuffer(seed)]);
     });
-    buffer = require$$0$4.Buffer.concat([buffer, programId.toBuffer(), require$$0$4.Buffer.from('ProgramDerivedAddress')]);
+    buffer = Buffer$1.concat([buffer, programId.toBuffer(), Buffer$1.from('ProgramDerivedAddress')]);
     const publicKeyBytes = sha256(buffer);
     if (isOnCurve(publicKeyBytes)) {
       throw new Error(`Invalid seeds, address must fall off the curve`);
@@ -122331,7 +122328,7 @@ class PublicKey extends Struct {
     let address;
     while (nonce != 0) {
       try {
-        const seedsWithNonce = seeds.concat(require$$0$4.Buffer.from([nonce]));
+        const seedsWithNonce = seeds.concat(Buffer$1.from([nonce]));
         address = this.createProgramAddressSync(seedsWithNonce, programId);
       } catch (err) {
         if (err instanceof TypeError) {
@@ -122393,12 +122390,12 @@ const rustString = (property = 'string') => {
   };
   rslShim.encode = (str, b, offset) => {
     const data = {
-      chars: require$$0$4.Buffer.from(str, 'utf8')
+      chars: Buffer$1.from(str, 'utf8')
     };
     return _encode(data, b, offset);
   };
   rslShim.alloc = str => {
-    return LayoutExports.u32().span + LayoutExports.u32().span + require$$0$4.Buffer.from(str, 'utf8').length;
+    return LayoutExports.u32().span + LayoutExports.u32().span + Buffer$1.from(str, 'utf8').length;
   };
   return rslShim;
 };
@@ -122434,7 +122431,7 @@ const voteAuthorizeWithSeedArgs = (property = 'voteAuthorizeWithSeedArgs') => {
 /**
  * Default (empty) signature
  */
-require$$0$4.Buffer.alloc(SIGNATURE_LENGTH_IN_BYTES).fill(0);
+Buffer$1.alloc(SIGNATURE_LENGTH_IN_BYTES).fill(0);
 
 new PublicKey('SysvarC1ock11111111111111111111111111111111');
 new PublicKey('SysvarEpochSchedu1e111111111111111111111111');
@@ -122472,7 +122469,7 @@ function u64(property) {
   const decode = layout.decode.bind(layout);
   const encode = layout.encode.bind(layout);
   const bigIntLayout = layout;
-  const codec = codecsNumbers.getU64Codec();
+  const codec = getU64Codec();
   bigIntLayout.decode = (buffer, offset) => {
     const src = decode(buffer, offset);
     return codec.decode(src);
@@ -122560,7 +122557,7 @@ new PublicKey('BPFLoader2111111111111111111111111111111111');
 
 const PublicKeyFromString = coerce(instance(PublicKey), string(), value => new PublicKey(value));
 const RawAccountDataResult = tuple([string(), literal('base64')]);
-const BufferFromRawAccountData = coerce(instance(require$$0$4.Buffer), RawAccountDataResult, value => require$$0$4.Buffer.from(value[0], 'base64'));
+const BufferFromRawAccountData = coerce(instance(Buffer$1), RawAccountDataResult, value => Buffer$1.from(value[0], 'base64'));
 
 /**
  * @internal
@@ -123134,7 +123131,7 @@ type({
   pubkey: PublicKeyFromString,
   account: AccountInfoResult
 });
-const ParsedOrRawAccountData = coerce(union([instance(require$$0$4.Buffer), ParsedAccountDataResult]), union([RawAccountDataResult, ParsedAccountDataResult]), value => {
+const ParsedOrRawAccountData = coerce(union([instance(Buffer$1), ParsedAccountDataResult]), union([RawAccountDataResult, ParsedAccountDataResult]), value => {
   if (Array.isArray(value)) {
     return create(value, BufferFromRawAccountData);
   } else {
@@ -124079,7 +124076,7 @@ function uint64LE(n) {
 
 /** Anchor discriminator: SHA256("global:<name>")[0..8] */
 function anchorDiscriminator(name) {
-  return node_crypto.createHash('sha256').update(`global:${name}`).digest().subarray(0, 8)
+  return createHash('sha256').update(`global:${name}`).digest().subarray(0, 8)
 }
 
 /** Borsh-encode a Vec<u8>: 4-byte LE length + bytes */
