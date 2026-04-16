@@ -92,6 +92,12 @@ const DOMAINS = {
     network: 'testnet',
     usdc: '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d',
   },
+  'base-sepolia': {
+    domain: 6,
+    chainId: 84532,
+    network: 'testnet',
+    usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  },
 }
 
 // CCTP V2 contract addresses per chain.
@@ -122,18 +128,22 @@ const CONTRACTS = {
     tokenMessenger: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
     messageTransmitter: '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64',
   },
-  // EVM testnet
+  // EVM testnet — CCTP V2 (identical CREATE2 addresses across all testnets)
   'ethereum-sepolia': {
-    tokenMessenger: '0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5',
-    messageTransmitter: '0x7865fafc2db2093669d92c0f33aeef291086befd',
+    tokenMessenger: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
+    messageTransmitter: '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
   },
   'avalanche-fuji': {
-    tokenMessenger: '0xeb08f243e5d3fcff26a9e38ae5520a669f4019d0',
-    messageTransmitter: '0xa9fb1b3009dcb79e2fe346c16a604b8fa8ae0a79',
+    tokenMessenger: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
+    messageTransmitter: '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
   },
   'arbitrum-sepolia': {
-    tokenMessenger: '0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5',
-    messageTransmitter: '0xacf1ceef35caac005e15888ddb8a3515c41b4872',
+    tokenMessenger: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
+    messageTransmitter: '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
+  },
+  'base-sepolia': {
+    tokenMessenger: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
+    messageTransmitter: '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
   },
   // Solana CCTP V2 (same addresses on mainnet and devnet)
   solana: {

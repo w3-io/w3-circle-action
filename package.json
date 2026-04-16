@@ -9,7 +9,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint src/",
     "test": "node --test test/*.test.js",
-    "build": "rollup -c",
+    "build": "ncc build src/index.js -o dist --target es2022 --minify",
     "all": "npm run format && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -22,6 +22,7 @@
     "@rollup/plugin-commonjs": "^28.0.0",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
+    "@vercel/ncc": "^0.38.4",
     "eslint": "^9.0.0",
     "prettier": "^3.4.0",
     "rollup": "^4.28.0"

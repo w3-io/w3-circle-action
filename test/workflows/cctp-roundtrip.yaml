@@ -1,0 +1,124 @@
+# CCTP round-trip: Base Sepolia ↔ Avalanche Fuji.
+#
+# Burns 1 USDC on Base → mints on Avalanche → burns 1 USDC back →
+# mints back on Base. Uses self-custody signer via the W3 bridge
+# (W3_SECRET_ETHEREUM). Destination is the signer's own address on
+# the other chain.
+#
+# Prereqs:
+#   - W3_SECRET_ETHEREUM exported (private key; funded wallet on both chains)
+#   - Base Sepolia: ≥1 USDC + small ETH for gas
+#   - Avalanche Fuji: small AVAX for gas (USDC arrives from mint)
+#
+# Run:
+#   w3 workflow test --execute test/workflows/cctp-roundtrip.yaml
+
+name: circle-cctp-roundtrip
+on:
+  workflow_dispatch: {}
+
+env:
+  # Signer's own address — shown here because it's public; private key
+  # lives in W3_SECRET_ETHEREUM and never leaves the bridge.
+  SIGNER: '0xe4E402962943c4EB2253f666575eE12700e78e90'
+
+jobs:
+  roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      # ── Leg 1: Base → Avalanche ────────────────────────────────────────────
+
+      - name: Burn 1 USDC on Base Sepolia
+        id: burn_base
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: burn
+          chain: base-sepolia
+          destination-chain: avalanche-fuji
+          destination-address: '0xe4E402962943c4EB2253f666575eE12700e78e90'
+          amount: '1'
+          rpc-url: https://sepolia.base.org
+
+      - name: Extract Base burn tx details
+        id: base_burn
+        run: |
+          r='${{ steps.burn_base.outputs.result }}'
+          echo "tx_hash=$(echo "$r" | jq -r .txHash)"        >> "$GITHUB_OUTPUT"
+          echo "msg_bytes=$(echo "$r" | jq -r .messageBytes)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for attestation (Base burn)
+        id: attest_base
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: wait-for-attestation
+          sandbox: 'true'
+          tx-hash: ${{ steps.base_burn.outputs.tx_hash }}
+          source-domain: '6'
+          poll-interval: '5'
+          max-attempts: '60'
+
+      - name: Extract Base attestation
+        id: base_attest
+        run: |
+          r='${{ steps.attest_base.outputs.result }}'
+          echo "attestation=$(echo "$r" | jq -r .attestation)" >> "$GITHUB_OUTPUT"
+          echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
+
+      - name: Mint on Avalanche Fuji
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: mint
+          chain: avalanche-fuji
+          message-bytes: ${{ steps.base_attest.outputs.message }}
+          attestation: ${{ steps.base_attest.outputs.attestation }}
+          rpc-url: https://api.avax-test.network/ext/bc/C/rpc
+
+      # ── Leg 2: Avalanche → Base (round trip back) ──────────────────────────
+
+      # Burn 0.9 back, not 1 — the mint just gave us ~0.99987 (1 minus a
+      # ~130 micro-USDC CCTP fast-transfer fee), so burning the full 1 would
+      # overdraw the wallet.
+      - name: Burn 0.9 USDC on Avalanche Fuji
+        id: burn_avax
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: burn
+          chain: avalanche-fuji
+          destination-chain: base-sepolia
+          destination-address: '0xe4E402962943c4EB2253f666575eE12700e78e90'
+          amount: '0.9'
+          rpc-url: https://api.avax-test.network/ext/bc/C/rpc
+
+      - name: Extract Avax burn tx details
+        id: avax_burn
+        run: |
+          r='${{ steps.burn_avax.outputs.result }}'
+          echo "tx_hash=$(echo "$r" | jq -r .txHash)"        >> "$GITHUB_OUTPUT"
+          echo "msg_bytes=$(echo "$r" | jq -r .messageBytes)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for attestation (Avax burn)
+        id: attest_avax
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: wait-for-attestation
+          sandbox: 'true'
+          tx-hash: ${{ steps.avax_burn.outputs.tx_hash }}
+          source-domain: '1'
+          poll-interval: '5'
+          max-attempts: '60'
+
+      - name: Extract Avax attestation
+        id: avax_attest
+        run: |
+          r='${{ steps.attest_avax.outputs.result }}'
+          echo "attestation=$(echo "$r" | jq -r .attestation)" >> "$GITHUB_OUTPUT"
+          echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
+
+      - name: Mint back on Base Sepolia
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: mint
+          chain: base-sepolia
+          message-bytes: ${{ steps.avax_attest.outputs.message }}
+          attestation: ${{ steps.avax_attest.outputs.attestation }}
+          rpc-url: https://sepolia.base.org

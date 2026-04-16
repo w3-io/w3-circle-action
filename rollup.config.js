@@ -5,8 +5,9 @@ import json from '@rollup/plugin-json'
 export default {
   input: 'src/index.js',
   output: {
-    file: 'dist/index.cjs',
-    format: 'cjs',
+    file: 'dist/index.js',
+    format: 'esm',
+    inlineDynamicImports: true,
   },
   plugins: [resolve({ preferBuiltins: true }), commonjs(), json()],
 }
