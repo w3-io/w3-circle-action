@@ -75,7 +75,10 @@ jobs:
 
       # ── Leg 2: Avalanche → Base (round trip back) ──────────────────────────
 
-      - name: Burn 1 USDC on Avalanche Fuji
+      # Burn 0.9 back, not 1 — the mint just gave us ~0.99987 (1 minus a
+       # ~130 micro-USDC CCTP fast-transfer fee), so burning the full 1 would
+       # overdraw the wallet.
+      - name: Burn 0.9 USDC on Avalanche Fuji
         id: burn_avax
         uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
         with:
@@ -83,7 +86,7 @@ jobs:
           chain: avalanche-fuji
           destination-chain: base-sepolia
           destination-address: '0xe4E402962943c4EB2253f666575eE12700e78e90'
-          amount: '1'
+          amount: '0.9'
           rpc-url: https://api.avax-test.network/ext/bc/C/rpc
 
       - name: Extract Avax burn tx details
