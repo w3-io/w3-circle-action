@@ -30,7 +30,7 @@ jobs:
 
       - name: Burn 1 USDC on Base Sepolia
         id: burn_base
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: burn
           chain: base-sepolia
@@ -48,7 +48,7 @@ jobs:
 
       - name: Wait for attestation (Base burn)
         id: attest_base
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: wait-for-attestation
           sandbox: 'true'
@@ -65,7 +65,7 @@ jobs:
           echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
 
       - name: Mint on Avalanche Fuji
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: mint
           chain: avalanche-fuji
@@ -80,7 +80,7 @@ jobs:
        # overdraw the wallet.
       - name: Burn 0.9 USDC on Avalanche Fuji
         id: burn_avax
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: burn
           chain: avalanche-fuji
@@ -98,7 +98,7 @@ jobs:
 
       - name: Wait for attestation (Avax burn)
         id: attest_avax
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: wait-for-attestation
           sandbox: 'true'
@@ -115,7 +115,7 @@ jobs:
           echo "message=$(echo "$r" | jq -r .message)"         >> "$GITHUB_OUTPUT"
 
       - name: Mint back on Base Sepolia
-        uses: w3-io/w3-circle-action@audie/circle-cctp-base-avalanche
+        uses: w3-io/w3-circle-action@v0
         with:
           command: mint
           chain: base-sepolia
