@@ -1,0 +1,21 @@
+name: circle-check-balances
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Base Sepolia wallet balance
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: get-balance
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          wallet-id: 478f3d8f-1104-5996-8d13-5b6306924757
+
+      - name: Avalanche Fuji wallet balance
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: get-balance
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          wallet-id: 20845969-f9de-5dd5-8e9f-adbda8f09b72

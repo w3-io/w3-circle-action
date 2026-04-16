@@ -1,0 +1,71 @@
+# One-off: provision the two Circle wallets needed for the CCTP
+# round-trip E2E (Base Sepolia ↔ Avalanche Fuji).
+#
+# Run once. Save the printed wallet IDs and addresses into Bitwarden
+# or as repo secrets, then fund both wallets via Circle's faucet
+# (https://faucet.circle.com) — Base Sepolia USDC + ETH on the Base
+# wallet, Avalanche Fuji AVAX on the Avalanche wallet. After that,
+# future E2E runs can reuse these stable wallets.
+#
+#   CIRCLE_API_KEY=... CIRCLE_ENTITY_SECRET=<64-hex> \
+#     w3 workflow test --execute test/workflows/setup-cctp-wallets.yaml
+
+name: circle-setup-cctp-wallets
+on:
+  workflow_dispatch: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create persistent wallet set
+        id: create_wallet_set
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: create-wallet-set
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          name: CCTP E2E Wallets
+
+      - name: Extract wallet set ID
+        id: wallet_set
+        run: |
+          echo "id=$(echo '${{ steps.create_wallet_set.outputs.result }}' | jq -r '.id')" >> "$GITHUB_OUTPUT"
+
+      - name: Create Base Sepolia wallet
+        id: create_base_wallet
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: create-wallet
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          wallet-set-id: ${{ steps.wallet_set.outputs.id }}
+          blockchains: BASE-SEPOLIA
+          count: '1'
+
+      - name: Create Avalanche Fuji wallet
+        id: create_avax_wallet
+        uses: w3-io/w3-circle-action@v0
+        with:
+          command: create-wallet
+          api-key: ${{ secrets.CIRCLE_API_KEY }}
+          entity-secret: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          wallet-set-id: ${{ steps.wallet_set.outputs.id }}
+          blockchains: AVAX-FUJI
+          count: '1'
+
+      - name: Print wallet info for safe storage
+        run: |
+          echo '┌─── Save these to Bitwarden / repo secrets ───┐'
+          echo
+          echo 'Wallet set ID: ${{ steps.wallet_set.outputs.id }}'
+          echo
+          echo 'Base Sepolia wallet:'
+          echo '${{ steps.create_base_wallet.outputs.result }}' | jq -r '.[0] | "  id:      \(.id)\n  address: \(.address)"'
+          echo
+          echo 'Avalanche Fuji wallet:'
+          echo '${{ steps.create_avax_wallet.outputs.result }}' | jq -r '.[0] | "  id:      \(.id)\n  address: \(.address)"'
+          echo
+          echo 'Next:'
+          echo '  - Fund Base wallet: https://faucet.circle.com (USDC) + https://www.alchemy.com/faucets/base-sepolia (ETH)'
+          echo '  - Fund Avax wallet: https://faucet.avax.network (AVAX for gas)'

@@ -27424,6 +27424,12 @@ const DOMAINS = {
     network: 'testnet',
     usdc: '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d',
   },
+  'base-sepolia': {
+    domain: 6,
+    chainId: 84532,
+    network: 'testnet',
+    usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  },
 };
 
 // CCTP V2 contract addresses per chain.
@@ -27466,6 +27472,10 @@ const CONTRACTS = {
   'arbitrum-sepolia': {
     tokenMessenger: '0x9f3b8679c73c2fef8b59b4f3444d4e156fb70aa5',
     messageTransmitter: '0xacf1ceef35caac005e15888ddb8a3515c41b4872',
+  },
+  'base-sepolia': {
+    tokenMessenger: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
+    messageTransmitter: '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
   },
   // Solana CCTP V2 (same addresses on mainnet and devnet)
   solana: {
