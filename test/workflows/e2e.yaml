@@ -49,7 +49,11 @@ jobs:
       # ── Setup ──────────────────────────────────────────────────────────────
       # SKIP: register-entity-secret requires a fresh entity-secret (one-time setup)
 
-      # SKIP: wallet operations require CIRCLE_ENTITY_SECRET credential
+      # SKIP: wallet operations require CIRCLE_ENTITY_SECRET — a 32-byte
+      # hex value registered once via register-entity-secret. Until this
+      # credential is provisioned and stored as a GitHub Actions secret
+      # (secrets.CIRCLE_ENTITY_SECRET), all wallet, transaction, and
+      # compliance steps below remain skipped.
       #       # ── Wallet Sets ────────────────────────────────────────────────────────
       # 
       #       - name: Create a wallet set
