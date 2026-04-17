@@ -3,6 +3,24 @@ partner: circle
 name: Circle
 version: 1.0.0
 repo: w3-io/w3-circle-action
+description: >
+  Circle provides USDC infrastructure including CCTP (Cross-Chain Transfer
+  Protocol) for burn-and-mint USDC transfers across 8+ chains with no
+  bridge fees, programmable wallets with entity-secret encryption for
+  developer-controlled custody, compliance screening, and a sandbox
+  environment for testing.
+context: >
+  Use when you need USDC cross-chain transfers (CCTP: approve-burn, burn,
+  wait-for-attestation, mint), programmable wallet custody, or compliance
+  screening. Do not use for general payments — use Stripe or PayPal
+  instead. Cost: CCTP charges only gas fees with no bridge fee; wallet
+  and compliance API calls are usage-based. Safety: CCTP transfers are
+  irreversible once attested by Circle; always verify destination address
+  and chain before burning. Prerequisites: Circle API key required for
+  Platform API (wallets, transfers, compliance); entity secret must be
+  registered before wallet creation; CCTP on-chain commands require a
+  private key and RPC access.
+
 commands:
   # -- CCTP (IRIS API, no auth) ------------------------------------------------
 
