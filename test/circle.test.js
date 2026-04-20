@@ -362,6 +362,63 @@ describe('CircleClient: screenAddress', () => {
   })
 })
 
+describe('CircleClient: transfer validation', () => {
+  it('rejects amount "0" (falsy)', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(
+      () =>
+        client.transfer({
+          walletId: 'w-1',
+          destinationAddress: '0xdef',
+          tokenId: 'tok-1',
+          amount: '',
+        }),
+      /amount is required/,
+    )
+  })
+
+  it('rejects missing amount', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(
+      () =>
+        client.transfer({
+          walletId: 'w-1',
+          destinationAddress: '0xdef',
+          tokenId: 'tok-1',
+        }),
+      /amount is required/,
+    )
+  })
+})
+
+describe('CircleClient: estimateFee validation', () => {
+  it('throws without walletId', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(
+      () =>
+        client.estimateFee({
+          destinationAddress: '0xdef',
+          tokenId: 'tok-1',
+          amount: '1.00',
+        }),
+      /wallet-id is required/,
+    )
+  })
+
+  it('throws without apiKey', async () => {
+    const client = new CircleClient()
+    await assert.rejects(
+      () =>
+        client.estimateFee({
+          walletId: 'w-1',
+          destinationAddress: '0xdef',
+          amount: '1.00',
+        }),
+      /api-key is required/,
+    )
+  })
+})
+
 describe('CircleClient: platformRequest error handling', () => {
   it('parses error message from response', async () => {
     mockFetch([

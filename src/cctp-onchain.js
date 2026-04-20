@@ -19,7 +19,7 @@ import { CircleError } from './circle.js'
  * Pad an EVM address to bytes32 for CCTP.
  * 20-byte address left-padded with 12 zero bytes.
  */
-function addressToBytes32(address) {
+export function addressToBytes32(address) {
   const clean = address.replace(/^0x/, '').toLowerCase().padStart(40, '0')
   return '0x' + '0'.repeat(24) + clean
 }
@@ -28,7 +28,7 @@ function addressToBytes32(address) {
  * Parse a uint256 amount from human-readable to raw units.
  * Reads decimals from the USDC contract.
  */
-async function parseAmount(network, usdcAddress, amount, rpcUrl) {
+export async function parseAmount(network, usdcAddress, amount, rpcUrl) {
   // Read USDC decimals
   const { result: decimalsStr } = await ethereum.readContract({
     network,
