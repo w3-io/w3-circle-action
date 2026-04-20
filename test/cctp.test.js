@@ -120,7 +120,7 @@ describe('parseAmount', () => {
 
   beforeEach(async () => {
     // Import the bridge module and mock readContract
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'readContract', async () => ({
       result: '6',
     }))
@@ -180,7 +180,7 @@ describe('approveBurn: happy path', () => {
   let approveBurn, bridgeModule
 
   beforeEach(async () => {
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'readContract', async () => ({ result: '6' }))
     mock.method(bridgeModule.ethereum, 'callContract', async () => ({
       txHash: '0xapprove-tx',
@@ -283,7 +283,7 @@ describe('burn: happy path', () => {
     // Patch setTimeout to fire immediately (avoids 10-15s BLOCK_WAIT)
     originalSetTimeout = globalThis.setTimeout
     globalThis.setTimeout = (fn, _ms) => originalSetTimeout(fn, 0)
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     let callCount = 0
     mock.method(bridgeModule.ethereum, 'readContract', async () => ({ result: '6' }))
     mock.method(bridgeModule.ethereum, 'callContract', async () => {
@@ -387,7 +387,7 @@ describe('burn: happy path', () => {
     // Override callContract to return no logs
     mock.restoreAll()
     globalThis.setTimeout = (fn, _ms) => originalSetTimeout(fn, 0)
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'readContract', async () => ({ result: '6' }))
     mock.method(bridgeModule.ethereum, 'callContract', async () => ({
       txHash: '0xburn-tx',
@@ -449,7 +449,7 @@ describe('mint: happy path', () => {
   let mint, bridgeModule
 
   beforeEach(async () => {
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'callContract', async () => ({
       txHash: '0xmint-tx',
     }))
@@ -537,7 +537,7 @@ describe('replaceMessage: happy path', () => {
   const logData = '0x' + offset + length + fakeMessage
 
   beforeEach(async () => {
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'callContract', async () => ({
       txHash: '0xreplace-tx',
       logs: JSON.stringify([{ topics: [MESSAGE_SENT_TOPIC], data: logData }]),
@@ -630,7 +630,7 @@ describe('replaceMessage: happy path', () => {
 
   it('handles missing logs (no new MessageSent event)', async () => {
     mock.restoreAll()
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.ethereum, 'callContract', async () => ({
       txHash: '0xreplace-tx',
       // no logs field
@@ -740,7 +740,7 @@ describe('mintSolana: happy path', () => {
   }
 
   beforeEach(async () => {
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.solana, 'payerAddress', async () => ({
       pubkey: '11111111111111111111111111111112',
     }))
@@ -802,7 +802,7 @@ describe('burnSolana: happy path', () => {
   let burnSolana, bridgeModule
 
   beforeEach(async () => {
-    bridgeModule = await import('../lib/bridge.js')
+    bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.solana, 'payerAddress', async () => ({
       pubkey: '11111111111111111111111111111112',
     }))

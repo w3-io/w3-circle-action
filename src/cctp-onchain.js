@@ -12,7 +12,7 @@
  *   5. replace-message: Replace pending message (destinationCaller/recipient)
  */
 
-import { ethereum, crypto } from '../lib/bridge.js'
+import { ethereum, crypto } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
 
 /**

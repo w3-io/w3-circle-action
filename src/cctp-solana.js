@@ -11,7 +11,7 @@
 
 import { createHash } from 'node:crypto'
 import { PublicKey } from '@solana/web3.js'
-import { solana, crypto } from '../lib/bridge.js'
+import { solana, crypto } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
 
 // ─── PDA Derivation ───────────────────────────────────────────────
