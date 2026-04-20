@@ -33,9 +33,6 @@ inputs:
     default: 'false'
 
   # CCTP on-chain inputs
-  private-key:
-    description: 'Wallet private key for on-chain CCTP commands. EVM: 0x-prefixed hex. Solana: base58 keypair or JSON byte array.'
-    required: false
   rpc-url:
     description: 'JSON-RPC endpoint URL (can also set per-chain env vars like ETHEREUM_SEPOLIA_RPC_URL)'
     required: false

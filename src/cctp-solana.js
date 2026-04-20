@@ -221,6 +221,10 @@ export async function burnSolana({
   domains,
   destinationCaller,
 }) {
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    throw new Error('amount must be a positive number')
+  }
+
   if (!recipient) {
     throw new CircleError('destination-address is required', { code: 'MISSING_RECIPIENT' })
   }
@@ -291,7 +295,7 @@ export async function burnSolana({
       uint32LE(destInfo.domain),
       mintRecipientBytes,
       callerBytes,
-      uint64LE(0n), // max_fee
+      uint64LE(100000n), // max_fee: match EVM DEFAULT_MAX_FEE
       uint32LE(0), // min_finality_threshold
     ]).toString('hex')
 

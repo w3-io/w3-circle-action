@@ -47,7 +47,11 @@ async function parseAmount(network, usdcAddress, amount, rpcUrl) {
 /**
  * Approve TokenMessenger to spend USDC.
  */
-export async function approveBurn({ chain, amount, domains, contracts }) {
+export async function approveBurn({ chain, amount, domains, contracts, rpcUrl }) {
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    throw new Error('amount must be a positive number')
+  }
+
   const chainInfo = domains[chain]
   if (!chainInfo) throw new CircleError(`Unknown chain: ${chain}`, { code: 'UNKNOWN_CHAIN' })
 
@@ -59,13 +63,14 @@ export async function approveBurn({ chain, amount, domains, contracts }) {
   }
 
   const network = chain
-  const parsedAmount = await parseAmount(network, chainInfo.usdc, amount)
+  const parsedAmount = await parseAmount(network, chainInfo.usdc, amount, rpcUrl)
 
   const result = await ethereum.callContract({
     network,
     contract: chainInfo.usdc,
     method: 'function approve(address,uint256) returns (bool)',
     args: [chainContracts.tokenMessenger, parsedAmount],
+    ...(rpcUrl ? { rpcUrl } : {}),
   })
 
   return {
@@ -91,6 +96,10 @@ export async function burn({
   contracts,
   destinationCaller,
 }) {
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    throw new Error('amount must be a positive number')
+  }
+
   const sourceInfo = domains[chain]
   const destInfo = domains[destinationChain]
   if (!sourceInfo)
@@ -128,7 +137,8 @@ export async function burn({
 
   // Wait for approve tx to confirm before submitting burn tx.
   // Ethereum: 12s blocks, Base: 2s blocks.
-  const BLOCK_WAIT = network === 'ethereum' ? 15000 : 3000
+  // TODO: Replace with actual tx confirmation wait
+  const BLOCK_WAIT = network === 'ethereum' ? 15000 : 10000
   await new Promise((resolve) => setTimeout(resolve, BLOCK_WAIT))
 
   const DEFAULT_MAX_FEE = '100000' // 0.10 USDC
@@ -151,10 +161,6 @@ export async function burn({
     ],
     ...rpc,
   })
-
-  console.log('DEBUG bridge response keys:', Object.keys(result))
-  console.log('DEBUG txHash:', result.txHash)
-  console.log('DEBUG transactionId:', result.transactionId)
 
   // Extract MessageSent event from transaction logs.
   // The bridge returns the transaction receipt which includes logs.
