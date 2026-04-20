@@ -419,6 +419,377 @@ describe('CircleClient: estimateFee validation', () => {
   })
 })
 
+describe('CircleClient: getAttestationV2', () => {
+  it('returns complete attestation from V2 endpoint', async () => {
+    mockFetch([
+      {
+        body: {
+          messages: [
+            {
+              status: 'complete',
+              attestation: '0xv2attestation',
+              message: '0xv2message',
+            },
+          ],
+        },
+      },
+    ])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.getAttestationV2('0xtxhash', 0)
+
+    assert.equal(result.status, 'complete')
+    assert.equal(result.attestation, '0xv2attestation')
+    assert.equal(result.message, '0xv2message')
+    assert.equal(result.txHash, '0xtxhash')
+    assert.equal(result.sourceDomain, 0)
+    assert.match(calls[0].url, /\/v2\/messages\/0\?transactionHash=0xtxhash/)
+  })
+
+  it('returns not_found when no messages', async () => {
+    mockFetch([{ body: { messages: [] } }])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.getAttestationV2('0xtxhash', 0)
+
+    assert.equal(result.status, 'not_found')
+    assert.equal(result.attestation, null)
+  })
+
+  it('returns pending when attestation is PENDING', async () => {
+    mockFetch([
+      {
+        body: {
+          messages: [{ status: 'pending', attestation: 'PENDING', message: '0xmsg' }],
+        },
+      },
+    ])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.getAttestationV2('0xtx', 6)
+
+    assert.equal(result.status, 'pending_confirmations')
+    assert.equal(result.attestation, null)
+  })
+
+  it('throws without txHash', async () => {
+    const client = new CircleClient({ sandbox: true })
+    await assert.rejects(() => client.getAttestationV2('', 0), /tx-hash is required/)
+  })
+
+  it('includes delayReason when present', async () => {
+    mockFetch([
+      {
+        body: {
+          messages: [
+            {
+              status: 'pending',
+              attestation: 'PENDING',
+              delayReason: 'insufficient_fee',
+            },
+          ],
+        },
+      },
+    ])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.getAttestationV2('0xtx', 0)
+
+    assert.equal(result.delayReason, 'insufficient_fee')
+  })
+})
+
+describe('CircleClient: waitForAttestationV2', () => {
+  it('returns immediately when V2 attestation is complete', async () => {
+    mockFetch([
+      {
+        body: {
+          messages: [{ status: 'complete', attestation: '0xatt', message: '0xmsg' }],
+        },
+      },
+    ])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.waitForAttestationV2('0xtx', 0, {
+      pollInterval: 0.01,
+      maxAttempts: 3,
+    })
+
+    assert.equal(result.status, 'complete')
+    assert.equal(result.attempts, 1)
+  })
+
+  it('polls until V2 attestation is complete', async () => {
+    mockFetch([
+      { body: { messages: [] } },
+      { body: { messages: [{ status: 'pending', attestation: 'PENDING' }] } },
+      { body: { messages: [{ status: 'complete', attestation: '0xatt', message: '0xm' }] } },
+    ])
+    const client = new CircleClient({ sandbox: true })
+    const result = await client.waitForAttestationV2('0xtx', 0, {
+      pollInterval: 0.01,
+      maxAttempts: 5,
+    })
+
+    assert.equal(result.status, 'complete')
+    assert.equal(result.attempts, 3)
+  })
+
+  it('throws on insufficient_fee delay reason', async () => {
+    mockFetch([
+      {
+        body: {
+          messages: [
+            { status: 'pending', attestation: 'PENDING', delayReason: 'insufficient_fee' },
+          ],
+        },
+      },
+    ])
+    const client = new CircleClient({ sandbox: true })
+
+    await assert.rejects(
+      () => client.waitForAttestationV2('0xtx', 0, { pollInterval: 0.01, maxAttempts: 3 }),
+      (err) => err instanceof CircleError && err.code === 'INSUFFICIENT_FEE',
+    )
+  })
+
+  it('throws on V2 timeout', async () => {
+    mockFetch([
+      { body: { messages: [{ status: 'pending', attestation: 'PENDING' }] } },
+      { body: { messages: [{ status: 'pending', attestation: 'PENDING' }] } },
+    ])
+    const client = new CircleClient({ sandbox: true })
+
+    await assert.rejects(
+      () => client.waitForAttestationV2('0xtx', 0, { pollInterval: 0.01, maxAttempts: 2 }),
+      (err) => err instanceof CircleError && err.code === 'ATTESTATION_TIMEOUT',
+    )
+  })
+})
+
+describe('CircleClient: getWallet', () => {
+  it('returns wallet details', async () => {
+    mockFetch([{ body: { data: { wallet: { id: 'w-1', address: '0xabc' } } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    const result = await client.getWallet('w-1')
+
+    assert.equal(result.id, 'w-1')
+    assert.match(calls[0].url, /\/v1\/w3s\/wallets\/w-1/)
+  })
+
+  it('throws without walletId', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(() => client.getWallet(''), /wallet-id is required/)
+  })
+
+  it('throws without apiKey', async () => {
+    const client = new CircleClient()
+    await assert.rejects(() => client.getWallet('w-1'), /api-key is required/)
+  })
+})
+
+describe('CircleClient: listWallets', () => {
+  it('returns wallet list with filters', async () => {
+    mockFetch([{ body: { data: { wallets: [{ id: 'w-1' }, { id: 'w-2' }] } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    const result = await client.listWallets({
+      walletSetId: 'ws-1',
+      blockchain: 'ETH',
+      pageSize: 5,
+    })
+
+    assert.equal(result.length, 2)
+    assert.match(calls[0].url, /walletSetId=ws-1/)
+    assert.match(calls[0].url, /blockchain=ETH/)
+    assert.match(calls[0].url, /pageSize=5/)
+  })
+
+  it('uses default pageSize', async () => {
+    mockFetch([{ body: { data: { wallets: [] } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await client.listWallets()
+
+    assert.match(calls[0].url, /pageSize=10/)
+  })
+})
+
+describe('CircleClient: getBalance', () => {
+  it('returns token balances', async () => {
+    mockFetch([{ body: { data: { tokenBalances: [{ token: 'USDC', amount: '100' }] } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    const result = await client.getBalance('w-1')
+
+    assert.equal(result[0].token, 'USDC')
+    assert.match(calls[0].url, /\/v1\/w3s\/wallets\/w-1\/balances/)
+  })
+
+  it('throws without walletId', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(() => client.getBalance(''), /wallet-id is required/)
+  })
+})
+
+describe('CircleClient: getTransaction', () => {
+  it('returns transaction details', async () => {
+    mockFetch([{ body: { data: { transaction: { id: 'tx-1', state: 'CONFIRMED' } } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    const result = await client.getTransaction('tx-1')
+
+    assert.equal(result.id, 'tx-1')
+    assert.equal(result.state, 'CONFIRMED')
+    assert.match(calls[0].url, /\/v1\/w3s\/transactions\/tx-1/)
+  })
+
+  it('throws without transactionId', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(() => client.getTransaction(''), /transaction-id is required/)
+  })
+})
+
+describe('CircleClient: estimateFee', () => {
+  it('sends fee estimate request', async () => {
+    mockFetch([{ body: { data: { low: '0.001', medium: '0.002', high: '0.005' } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    const result = await client.estimateFee({
+      walletId: 'w-1',
+      destinationAddress: '0xdef',
+      tokenId: 'tok-1',
+      amount: '10.00',
+    })
+
+    assert.equal(result.medium, '0.002')
+    const body = JSON.parse(calls[0].options.body)
+    assert.equal(body.walletId, 'w-1')
+    assert.deepEqual(body.amounts, ['10.00'])
+  })
+})
+
+describe('CircleClient: getEntitySecretCiphertext', () => {
+  it('throws without entity secret', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(() => client.getEntitySecretCiphertext(), /entity-secret is required/)
+  })
+
+  it('throws on invalid entity secret format', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret', entitySecret: 'not-hex' })
+    await assert.rejects(
+      () => client.getEntitySecretCiphertext(),
+      /entity-secret must be a 32-byte hex string/,
+    )
+  })
+})
+
+describe('CircleClient: irisRequest retry', () => {
+  it('retries on 429 and succeeds', async () => {
+    mockFetch([
+      { status: 429, body: 'Rate limited' },
+      { body: { status: 'complete', attestation: '0xatt' } },
+    ])
+    const client = new CircleClient({ sandbox: true, maxRetries: 1 })
+
+    const result = await client.getAttestation('0xabc')
+    assert.equal(result.status, 'complete')
+    assert.equal(calls.length, 2)
+  })
+
+  it('retries on 500 and succeeds', async () => {
+    mockFetch([
+      { status: 500, body: 'Server Error' },
+      { body: { status: 'complete', attestation: '0xatt' } },
+    ])
+    const client = new CircleClient({ sandbox: true, maxRetries: 1 })
+
+    const result = await client.getAttestation('0xabc')
+    assert.equal(result.status, 'complete')
+    assert.equal(calls.length, 2)
+  })
+
+  it('exhausts retries on persistent 500', async () => {
+    mockFetch([
+      { status: 500, body: 'Server Error' },
+      { status: 500, body: 'Server Error' },
+    ])
+    const client = new CircleClient({ sandbox: true, maxRetries: 1 })
+
+    await assert.rejects(
+      () => client.getAttestation('0xabc'),
+      (err) => err instanceof CircleError && err.code === 'IRIS_ERROR',
+    )
+  })
+})
+
+describe('CircleClient: platformRequest retry', () => {
+  it('retries on 429 then succeeds', async () => {
+    mockFetch([{ status: 429, body: 'Rate limited' }, { body: { data: { wallets: [] } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret', maxRetries: 1 })
+
+    const result = await client.listWallets()
+    assert.deepEqual(result, [])
+    assert.equal(calls.length, 2)
+  })
+
+  it('retries on 500 then succeeds', async () => {
+    mockFetch([{ status: 500, body: 'Server Error' }, { body: { data: { wallets: [] } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret', maxRetries: 1 })
+
+    const result = await client.listWallets()
+    assert.deepEqual(result, [])
+  })
+
+  it('exhausts retries and throws last error', async () => {
+    mockFetch([
+      { status: 500, body: 'Server Error' },
+      { status: 500, body: 'Server Error' },
+    ])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret', maxRetries: 1 })
+
+    await assert.rejects(
+      () => client.listWallets(),
+      (err) => err instanceof CircleError && err.code === 'API_ERROR',
+    )
+  })
+
+  it('handles empty response body', async () => {
+    mockFetch([{ body: '' }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    const result = await client.listWallets()
+    assert.deepEqual(result, {})
+  })
+
+  it('throws parse error on invalid JSON response', async () => {
+    mockFetch([{ body: 'not-json-at-all' }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    await assert.rejects(
+      () => client.listWallets(),
+      (err) => err instanceof CircleError && err.code === 'PARSE_ERROR',
+    )
+  })
+})
+
+describe('CircleClient: transfer with blockchain param', () => {
+  it('includes blockchain in request body', async () => {
+    mockFetch([{ body: { data: { id: 'tx-1', state: 'INITIATED' } } }])
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+
+    await client.transfer({
+      walletId: 'w-1',
+      destinationAddress: '0xdef',
+      amount: '5.00',
+      tokenId: 'tok-1',
+      blockchain: 'ETH-SEPOLIA',
+    })
+
+    const body = JSON.parse(calls[0].options.body)
+    assert.equal(body.blockchain, 'ETH-SEPOLIA')
+    assert.equal(body.tokenId, 'tok-1')
+  })
+
+  it('throws without walletId', async () => {
+    const client = new CircleClient({ apiKey: 'TEST:id:secret' })
+    await assert.rejects(
+      () => client.transfer({ destinationAddress: '0xdef', amount: '1' }),
+      /wallet-id is required/,
+    )
+  })
+})
+
 describe('CircleClient: platformRequest error handling', () => {
   it('parses error message from response', async () => {
     mockFetch([
