@@ -1,25 +1,37 @@
 /**
  * CCTP V2 Solana operations via the W3 bridge.
  *
- * Chain operations go through bridge.solana.callProgram().
- * PDA derivation uses @solana/web3.js (temporary — W3-332 tracks
- * adding a bridge route for this).
+ * All operations — including PDA derivation and address encoding —
+ * go through the bridge. No @solana/web3.js dependency.
  *
  * Burn: depositForBurn on TokenMessengerMinter
  * Mint: receiveMessage on MessageTransmitter
  */
 
 import { createHash } from 'node:crypto'
-import { PublicKey } from '@solana/web3.js'
 import { solana, crypto } from '@w3-io/action-core'
 import { CircleError } from './circle.js'
 
-// ─── PDA Derivation ───────────────────────────────────────────────
-// Uses @solana/web3.js PublicKey.findProgramAddressSync only.
-// W3-332 will replace this with bridge.solana.findPda().
+// ─── Bridge-based helpers ────────────────────────────────────────────
 
-function findPda(programId, seeds) {
-  return PublicKey.findProgramAddressSync(seeds, new PublicKey(programId))
+/** Derive a PDA via the bridge. Returns the base58 address. */
+async function findPda(programId, seeds) {
+  // Convert Buffer seeds to hex for the bridge
+  const hexSeeds = seeds.map((s) => (Buffer.isBuffer(s) ? '0x' + s.toString('hex') : s))
+  const result = await solana.findPda({ seeds: hexSeeds, programId })
+  return result.address
+}
+
+/** Decode a base58 address to raw bytes via the bridge. */
+async function decodeAddr(address) {
+  const result = await solana.decodeAddress({ address })
+  return Buffer.from(result.bytes.replace(/^0x/, ''), 'hex')
+}
+
+/** Get ATA address via the bridge. */
+async function getAta(mint, owner) {
+  const result = await solana.getAta({ owner, mint })
+  return result.address
 }
 
 function uint32BE(n) {
@@ -50,19 +62,6 @@ function borshVec(data) {
   const len = Buffer.alloc(4)
   len.writeUInt32LE(data.length)
   return Buffer.concat([len, data])
-}
-
-/** Get associated token address (SPL Token convention) */
-function getAta(mint, owner) {
-  const [ata] = PublicKey.findProgramAddressSync(
-    [
-      new PublicKey(owner).toBuffer(),
-      new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
-      new PublicKey(mint).toBuffer(),
-    ],
-    new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'),
-  )
-  return ata.toBase58()
 }
 
 // ─── Message Parsing ──────────────────────────────────────────────
@@ -124,36 +123,42 @@ export async function mintSolana({
   const tmmId = chainContracts.tokenMessenger
   const usdcMint = chainInfo.usdc
 
-  // Get the payer's pubkey for accounts that reference it
   const { pubkey: payerPubkey } = await solana.payerAddress()
 
   const { sourceDomain, nonceBytes, burnToken, mintRecipient } = parseMessage(messageBytes)
-  const mintRecipientB58 = new PublicKey(mintRecipient).toBase58()
 
-  // Derive PDAs
-  const [authorityPda] = findPda(mtId, [
+  // Encode the raw mintRecipient bytes back to base58
+  const mintRecipientHex = '0x' + Buffer.from(mintRecipient).toString('hex')
+  const { address: mintRecipientB58 } = await solana.encodeAddress({ bytes: mintRecipientHex })
+
+  // Derive PDAs via bridge
+  const tmmIdBytes = await decodeAddr(tmmId)
+  const usdcMintBytes = await decodeAddr(usdcMint)
+
+  const authorityPda = await findPda(mtId, [
     Buffer.from('message_transmitter_authority'),
-    new PublicKey(tmmId).toBuffer(),
+    tmmIdBytes,
   ])
-  const [mtState] = findPda(mtId, [Buffer.from('message_transmitter')])
-  const [usedNonce] = findPda(mtId, [Buffer.from('used_nonce'), nonceBytes])
-  const [mtEventAuth] = findPda(mtId, [Buffer.from('__event_authority')])
+  const mtState = await findPda(mtId, [Buffer.from('message_transmitter')])
+  const usedNonce = await findPda(mtId, [Buffer.from('used_nonce'), nonceBytes])
+  const mtEventAuth = await findPda(mtId, [Buffer.from('__event_authority')])
 
-  const [tmmState] = findPda(tmmId, [Buffer.from('token_messenger')])
-  const [remoteTmm] = findPda(tmmId, [
+  const tmmState = await findPda(tmmId, [Buffer.from('token_messenger')])
+  const remoteTmm = await findPda(tmmId, [
     Buffer.from('remote_token_messenger'),
     uint32BE(sourceDomain),
   ])
-  const [tokenMinter] = findPda(tmmId, [Buffer.from('token_minter')])
-  const [localToken] = findPda(tmmId, [
-    Buffer.from('local_token'),
-    new PublicKey(usdcMint).toBuffer(),
+  const tokenMinter = await findPda(tmmId, [Buffer.from('token_minter')])
+  const localToken = await findPda(tmmId, [Buffer.from('local_token'), usdcMintBytes])
+  const tokenPair = await findPda(tmmId, [
+    Buffer.from('token_pair'),
+    uint32BE(sourceDomain),
+    burnToken,
   ])
-  const [tokenPair] = findPda(tmmId, [Buffer.from('token_pair'), uint32BE(sourceDomain), burnToken])
-  const feeRecipientAta = getAta(usdcMint, mintRecipientB58) // fee goes to recipient
-  const recipientAta = getAta(usdcMint, mintRecipientB58)
-  const [custody] = findPda(tmmId, [Buffer.from('custody'), new PublicKey(usdcMint).toBuffer()])
-  const [tmmEventAuth] = findPda(tmmId, [Buffer.from('__event_authority')])
+  const feeRecipientAta = await getAta(usdcMint, mintRecipientB58)
+  const recipientAta = await getAta(usdcMint, mintRecipientB58)
+  const custody = await findPda(tmmId, [Buffer.from('custody'), usdcMintBytes])
+  const tmmEventAuth = await findPda(tmmId, [Buffer.from('__event_authority')])
 
   // Instruction data
   const msgData = Buffer.from(messageBytes.replace(/^0x/, ''), 'hex')
@@ -169,31 +174,26 @@ export async function mintSolana({
   const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
   const SYSTEM = '11111111111111111111111111111111'
 
-  // Account list — order follows Anchor IDL
   const accounts = [
-    // receiveMessage core accounts
     { pubkey: payerPubkey, isSigner: true, isWritable: true },
-    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // caller
-    { pubkey: authorityPda.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: mtState.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: usedNonce.toBase58(), isSigner: false, isWritable: true },
-    { pubkey: tmmId, isSigner: false, isWritable: false }, // receiver
+    { pubkey: payerPubkey, isSigner: true, isWritable: false },
+    { pubkey: authorityPda, isSigner: false, isWritable: false },
+    { pubkey: mtState, isSigner: false, isWritable: false },
+    { pubkey: usedNonce, isSigner: false, isWritable: true },
+    { pubkey: tmmId, isSigner: false, isWritable: false },
     { pubkey: SYSTEM, isSigner: false, isWritable: false },
-    // #[event_cpi] for MessageTransmitter
-    { pubkey: mtEventAuth.toBase58(), isSigner: false, isWritable: false },
+    { pubkey: mtEventAuth, isSigner: false, isWritable: false },
     { pubkey: mtId, isSigner: false, isWritable: false },
-    // CPI remaining accounts for TokenMessengerMinter
-    { pubkey: tmmState.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: remoteTmm.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: tokenMinter.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: localToken.toBase58(), isSigner: false, isWritable: true },
-    { pubkey: tokenPair.toBase58(), isSigner: false, isWritable: false },
+    { pubkey: tmmState, isSigner: false, isWritable: false },
+    { pubkey: remoteTmm, isSigner: false, isWritable: false },
+    { pubkey: tokenMinter, isSigner: false, isWritable: false },
+    { pubkey: localToken, isSigner: false, isWritable: true },
+    { pubkey: tokenPair, isSigner: false, isWritable: false },
     { pubkey: feeRecipientAta, isSigner: false, isWritable: true },
     { pubkey: recipientAta, isSigner: false, isWritable: true },
-    { pubkey: custody.toBase58(), isSigner: false, isWritable: true },
+    { pubkey: custody, isSigner: false, isWritable: true },
     { pubkey: SPL_TOKEN, isSigner: false, isWritable: false },
-    // #[event_cpi] for TokenMessengerMinter
-    { pubkey: tmmEventAuth.toBase58(), isSigner: false, isWritable: false },
+    { pubkey: tmmEventAuth, isSigner: false, isWritable: false },
     { pubkey: tmmId, isSigner: false, isWritable: false },
   ]
 
@@ -242,51 +242,50 @@ export async function burnSolana({
   const usdcMint = chainInfo.usdc
   const rawAmount = BigInt(Math.round(parseFloat(amount) * 1e6))
 
-  // Get the payer's pubkey for accounts and PDA derivation
   const { pubkey: payerPubkey } = await solana.payerAddress()
 
-  // Recipient: EVM address → bytes32, Solana pubkey → 32 bytes
+  // Recipient: EVM address → bytes32, Solana pubkey → 32 bytes via bridge
   let mintRecipientBytes
   if (recipient.startsWith('0x')) {
     mintRecipientBytes = Buffer.alloc(32)
     Buffer.from(recipient.replace(/^0x/, ''), 'hex').copy(mintRecipientBytes, 12)
   } else {
-    mintRecipientBytes = new PublicKey(recipient).toBuffer()
+    mintRecipientBytes = await decodeAddr(recipient)
   }
 
-  const callerBytes = destinationCaller
-    ? destinationCaller.startsWith('0x')
-      ? Buffer.from(destinationCaller.replace(/^0x/, '').padStart(64, '0'), 'hex')
-      : new PublicKey(destinationCaller).toBuffer()
-    : Buffer.alloc(32)
+  let callerBytes
+  if (destinationCaller) {
+    if (destinationCaller.startsWith('0x')) {
+      callerBytes = Buffer.from(destinationCaller.replace(/^0x/, '').padStart(64, '0'), 'hex')
+    } else {
+      callerBytes = await decodeAddr(destinationCaller)
+    }
+  } else {
+    callerBytes = Buffer.alloc(32)
+  }
 
-  // Generate ephemeral keypair for MessageSent event data
   const { pubkey: eventDataPubkey } = await solana.generateKeypair()
 
-  // Derive PDAs using the actual payer pubkey
-  const [senderAuth] = findPda(tmmId, [Buffer.from('sender_authority')])
-  const payerAta = getAta(usdcMint, payerPubkey)
-  const [denylist] = findPda(tmmId, [
-    Buffer.from('denylist_account'),
-    new PublicKey(payerPubkey).toBuffer(),
-  ])
-  const [mtState] = findPda(mtId, [Buffer.from('message_transmitter')])
-  const [tmmState] = findPda(tmmId, [Buffer.from('token_messenger')])
-  const [remoteTmm] = findPda(tmmId, [
+  // Derive PDAs via bridge
+  const payerBytes = await decodeAddr(payerPubkey)
+  const usdcMintBytes = await decodeAddr(usdcMint)
+
+  const senderAuth = await findPda(tmmId, [Buffer.from('sender_authority')])
+  const payerAta = await getAta(usdcMint, payerPubkey)
+  const denylist = await findPda(tmmId, [Buffer.from('denylist_account'), payerBytes])
+  const mtState = await findPda(mtId, [Buffer.from('message_transmitter')])
+  const tmmState = await findPda(tmmId, [Buffer.from('token_messenger')])
+  const remoteTmm = await findPda(tmmId, [
     Buffer.from('remote_token_messenger'),
     uint32BE(destInfo.domain),
   ])
-  const [tokenMinter] = findPda(tmmId, [Buffer.from('token_minter')])
-  const [localToken] = findPda(tmmId, [
-    Buffer.from('local_token'),
-    new PublicKey(usdcMint).toBuffer(),
-  ])
-  const [eventAuth] = findPda(tmmId, [Buffer.from('__event_authority')])
+  const tokenMinter = await findPda(tmmId, [Buffer.from('token_minter')])
+  const localToken = await findPda(tmmId, [Buffer.from('local_token'), usdcMintBytes])
+  const eventAuth = await findPda(tmmId, [Buffer.from('__event_authority')])
 
   const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
   const SYSTEM = '11111111111111111111111111111111'
 
-  // Instruction data
   const data =
     '0x' +
     Buffer.concat([
@@ -299,26 +298,24 @@ export async function burnSolana({
       uint32LE(0), // min_finality_threshold
     ]).toString('hex')
 
-  // Account list — order follows Anchor IDL
   const accounts = [
-    { pubkey: payerPubkey, isSigner: true, isWritable: false }, // owner
-    { pubkey: payerPubkey, isSigner: true, isWritable: true }, // event_rent_payer
-    { pubkey: senderAuth.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: payerAta, isSigner: false, isWritable: true }, // burn_token_account
-    { pubkey: denylist.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: mtState.toBase58(), isSigner: false, isWritable: true },
-    { pubkey: tmmState.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: remoteTmm.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: tokenMinter.toBase58(), isSigner: false, isWritable: false },
-    { pubkey: localToken.toBase58(), isSigner: false, isWritable: true },
+    { pubkey: payerPubkey, isSigner: true, isWritable: false },
+    { pubkey: payerPubkey, isSigner: true, isWritable: true },
+    { pubkey: senderAuth, isSigner: false, isWritable: false },
+    { pubkey: payerAta, isSigner: false, isWritable: true },
+    { pubkey: denylist, isSigner: false, isWritable: false },
+    { pubkey: mtState, isSigner: false, isWritable: true },
+    { pubkey: tmmState, isSigner: false, isWritable: false },
+    { pubkey: remoteTmm, isSigner: false, isWritable: false },
+    { pubkey: tokenMinter, isSigner: false, isWritable: false },
+    { pubkey: localToken, isSigner: false, isWritable: true },
     { pubkey: usdcMint, isSigner: false, isWritable: true },
     { pubkey: eventDataPubkey, isSigner: true, isWritable: true },
     { pubkey: mtId, isSigner: false, isWritable: false },
     { pubkey: tmmId, isSigner: false, isWritable: false },
     { pubkey: SPL_TOKEN, isSigner: false, isWritable: false },
     { pubkey: SYSTEM, isSigner: false, isWritable: false },
-    // #[event_cpi]
-    { pubkey: eventAuth.toBase58(), isSigner: false, isWritable: false },
+    { pubkey: eventAuth, isSigner: false, isWritable: false },
     { pubkey: tmmId, isSigner: false, isWritable: false },
   ]
 
@@ -330,19 +327,16 @@ export async function burnSolana({
     ephemeralSignerPubkeys: [eventDataPubkey],
   })
 
-  // Read the MessageSent event data account
   const eventAccount = await solana.getAccount({
     network: chain,
     address: eventDataPubkey,
   })
 
-  // Parse: skip 8-byte Anchor discriminator, then Borsh Vec<u8>
   const eventData = Buffer.from(eventAccount.data || '', 'base64')
   const msgLen = eventData.readUInt32LE(8)
   const msgBytes = eventData.subarray(12, 12 + msgLen)
   const messageBytesHex = '0x' + msgBytes.toString('hex')
 
-  // Compute messageHash via bridge crypto
   const { hash: messageHash } = await crypto.keccak256({ data: messageBytesHex })
 
   return {

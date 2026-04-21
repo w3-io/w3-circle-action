@@ -724,28 +724,41 @@ describe('mintSolana: happy path', () => {
   // Build a valid CCTP V2 message for parseMessage.
   // Layout: version(4) + sourceDomain(4) + nonce(32) + sender(32) + ...pad to 140... + body
   // Body: burnToken(32 at body+4) + mintRecipient(32 at body+36)
-  async function buildFakeMessage() {
+  function buildFakeMessage() {
     const buf = Buffer.alloc(208)
     buf.writeUInt32BE(0, 4) // sourceDomain = 0 (ethereum)
-    // nonce bytes at [12..44]
-    buf.fill(0x01, 12, 44)
-    // Body starts at 140; burnToken at body+4 = 144, mintRecipient at body+36 = 176
-    const { PublicKey } = await import('@solana/web3.js')
-    const usdcMint = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
-    usdcMint.toBuffer().copy(buf, 144) // burnToken
-    // mintRecipient: use the payer pubkey
-    const payer = new PublicKey('11111111111111111111111111111112')
-    payer.toBuffer().copy(buf, 176)
+    buf.fill(0x01, 12, 44) // nonce bytes
+    // burnToken at body+4 = 144 (32 zero bytes = fake USDC mint)
+    buf.fill(0xaa, 144, 176)
+    // mintRecipient at body+36 = 176 (32 zero bytes = fake recipient)
+    buf.fill(0xbb, 176, 208)
     return '0x' + buf.toString('hex')
   }
 
+  let pdaCounter = 0
+
   beforeEach(async () => {
+    pdaCounter = 0
     bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.solana, 'payerAddress', async () => ({
       pubkey: '11111111111111111111111111111112',
     }))
     mock.method(bridgeModule.solana, 'callProgram', async () => ({
       signature: 'solana-mint-sig-123',
+    }))
+    mock.method(bridgeModule.solana, 'findPda', async () => ({
+      address: `PDA${++pdaCounter}111111111111111111111111111`,
+      bump: '255',
+    }))
+    mock.method(bridgeModule.solana, 'decodeAddress', async ({ address }) => ({
+      bytes: '0x' + Buffer.alloc(32, 0xcc).toString('hex'),
+    }))
+    mock.method(bridgeModule.solana, 'encodeAddress', async () => ({
+      address: 'EncodedAddr1111111111111111111111111',
+    }))
+    mock.method(bridgeModule.solana, 'getAta', async () => ({
+      address: 'ATA11111111111111111111111111111111',
+      bump: '254',
     }))
     mock.method(bridgeModule.crypto, 'keccak256', async () => ({
       hash: 'solanahash'.padEnd(64, '0'),
@@ -800,8 +813,10 @@ describe('mintSolana: happy path', () => {
 
 describe('burnSolana: happy path', () => {
   let burnSolana, bridgeModule
+  let pdaCounter = 0
 
   beforeEach(async () => {
+    pdaCounter = 0
     bridgeModule = await import('@w3-io/action-core')
     mock.method(bridgeModule.solana, 'payerAddress', async () => ({
       pubkey: '11111111111111111111111111111112',
@@ -811,6 +826,17 @@ describe('burnSolana: happy path', () => {
     }))
     mock.method(bridgeModule.solana, 'callProgram', async () => ({
       signature: 'solana-burn-sig-456',
+    }))
+    mock.method(bridgeModule.solana, 'findPda', async () => ({
+      address: `BurnPDA${++pdaCounter}11111111111111111111111`,
+      bump: '255',
+    }))
+    mock.method(bridgeModule.solana, 'decodeAddress', async () => ({
+      bytes: '0x' + Buffer.alloc(32, 0xdd).toString('hex'),
+    }))
+    mock.method(bridgeModule.solana, 'getAta', async () => ({
+      address: 'BurnATA1111111111111111111111111111',
+      bump: '254',
     }))
     // Build fake event data: 8-byte discriminator + 4-byte length + message bytes
     const msgBytes = Buffer.alloc(32, 0xab)
