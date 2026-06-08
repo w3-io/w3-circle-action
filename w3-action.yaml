@@ -388,3 +388,18 @@ commands:
       result:
         type: object
         description: '{result, riskScore, ...}'
+
+# ── Explorer display metadata ───────────────────────────────────
+#
+# Drives card rendering in the W3 Explorer when a workflow step
+# uses `uses: w3-io/w3-circle-action@<ref>`. Brand + per-command
+# entries are sanitised through the explorer's allowlist before
+# rendering — see action-displays.ts for the validation rules.
+
+display:
+  brand:
+    name: 'Circle'
+    short_name: 'Circle'
+    description: 'USDC issuance, CCTP cross-chain, programmable wallets, compliance'
+    logo: 'https://raw.githubusercontent.com/w3-io/w3-circle-action/main/assets/usdc.svg'
+    color: '#2775CA'
